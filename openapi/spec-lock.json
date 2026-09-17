@@ -1,0 +1,29 @@
+{
+  "upstreamRepository": "https://github.com/datagen24/victual",
+  "upstreamRef": "master",
+  "upstreamPath": "victual.openapi.json",
+  "upstreamCommit": "4f2629c457ea0142c5743521c288d70cbb9538f1",
+  "upstreamSha256": "f2f5b3f1730755d5ea41954129afc162a57aa16757b447f4b89d4ea0dd4cf3c6",
+  "generatedSha256": "0c8530207dccc5e8acd3c494c7ec81483734db245424f213d2e3d988d85d6c0c",
+  "syncedAt": "2026-09-17T22:34:10Z",
+  "normalizations": {
+    "pathsRewritten": 3,
+    "operationIdsAssigned": 143,
+    "operationIdsFromUpstream": 0,
+    "nullableKeywordsConverted": 25,
+    "compositionConflictsResolved": 1,
+    "danglingRefsRepaired": [
+      "/paths//objects/{entity}/get/parameters[0]/schema -> #/components/schemas/ExposedEntity_NotIncludingNotListable",
+      "/paths//objects/{entity}/post/parameters[0]/schema -> #/components/schemas/ExposedEntity_NotIncludingNotEditable",
+      "/paths//objects/{entity}/{objectId}/get/parameters[0]/schema -> #/components/schemas/ExposedEntity_NotIncludingNotListable",
+      "/paths//objects/{entity}/{objectId}/put/parameters[0]/schema -> #/components/schemas/ExposedEntity_NotIncludingNotEditable",
+      "/paths//objects/{entity}/{objectId}/delete/parameters[0]/schema -> #/components/schemas/ExposedEntity_NotIncludingNotDeletable",
+      "/paths//userfields/{entity}/{objectId}/get/parameters[0]/schema -> #/components/schemas/ExposedEntity_IncludingUserEntities",
+      "/paths//userfields/{entity}/{objectId}/put/parameters[0]/schema -> #/components/schemas/ExposedEntity_IncludingUserEntities_NotIncludingNotEditable"
+    ],
+    "serverPlaceholderReplaced": true,
+    "upstreamIssuesLeftInPlace": [
+      "paths//user/get/responses/200/content/application/json/schema: declared `object` but carries `items`; generated as a free-form object rather than the referenced type"
+    ]
+  }
+}

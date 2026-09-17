@@ -1,0 +1,8 @@
+# swift-openapi-generator input. The `openapi.json` beside this file is produced
+# by Scripts/update-openapi.py from the upstream Victual spec — edit the script,
+# never the generated document.
+generate:
+  - types
+  - client
+accessModifier: public
+namingStrategy: idiomatic

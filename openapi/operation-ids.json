@@ -1,0 +1,15 @@
+{
+	"$comment": "Optional overrides for the operationIds derived from each route. Keys are `METHOD /path` using the normalized (constraint-free) path template; values are the Swift method name swift-openapi-generator should emit. Anything absent falls back to the deterministic name built by Scripts/update-openapi.py.",
+	"GET /objects/{entity}": "listObjects",
+	"POST /objects/{entity}": "createObject",
+	"GET /objects/{entity}/{objectId}": "getObject",
+	"PUT /objects/{entity}/{objectId}": "updateObject",
+	"DELETE /objects/{entity}/{objectId}": "deleteObject",
+	"GET /system/info": "getSystemInfo",
+	"GET /system/config": "getSystemConfig",
+	"GET /system/time": "getSystemTime",
+	"GET /system/db-changed-time": "getDatabaseChangedTime",
+	"GET /user": "getCurrentUser",
+	"GET /stock": "getCurrentStock",
+	"GET /stock/volatile": "getVolatileStock"
+}
