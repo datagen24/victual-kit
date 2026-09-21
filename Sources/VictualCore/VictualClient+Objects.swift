@@ -29,7 +29,11 @@ extension VictualClient {
     /// Amounts cannot be rendered without these, and there are few enough of
     /// them that fetching them once beats fetching one per product.
     public func quantityUnits() async throws(VictualError) -> [QuantityUnit] {
-        try await listObjects("quantity_units", as: QuantityUnit.self)
+        do {
+            return try await listObjects("quantity_units", as: QuantityUnit.self)
+        } catch {
+            throw VictualError.mapping(error)
+        }
     }
 
     /// Every storage location the instance defines.
@@ -37,7 +41,11 @@ extension VictualClient {
     /// ``StorageLocation/path`` is not filled here — it lives in a different
     /// view. Call ``locationPaths()`` and merge, or use ``locationTree()``.
     public func locations() async throws(VictualError) -> [StorageLocation] {
-        try await listObjects("locations", as: StorageLocation.self)
+        do {
+            return try await listObjects("locations", as: StorageLocation.self)
+        } catch {
+            throw VictualError.mapping(error)
+        }
     }
 
     /// Each location's display path from its own root, keyed by location id.
@@ -46,7 +54,12 @@ extension VictualClient {
     /// descendant) pair — and `path` is the same string on every row for a given
     /// descendant, so only the depth-0 rows are read.
     public func locationPaths() async throws(VictualError) -> [Int: String] {
-        let rows = try await listObjects("locations_resolved", as: ResolvedLocationPath.self)
+        let rows: [ResolvedLocationPath]
+        do {
+            rows = try await listObjects("locations_resolved", as: ResolvedLocationPath.self)
+        } catch {
+            throw VictualError.mapping(error)
+        }
         var paths: [Int: String] = [:]
         for row in rows where row.depth == 0 {
             if let path = row.path, !path.isEmpty {
@@ -89,10 +102,22 @@ extension VictualClient {
     /// and each caller above knows which row type its entity yields. Keeping the
     /// pairing in one small function per entity is what stops the undiscriminated
     /// union leaking out.
+    ///
+    /// ## Why this one throws untyped
+    ///
+    /// It still only ever throws a ``VictualError``, and the wrappers above
+    /// re-narrow it through ``VictualError/mapping(_:)``, which passes one
+    /// straight back. The declaration is untyped because a generic `async`
+    /// function with a typed throw **crashes the Swift 6.1 compiler** in
+    /// Xcode 16.4 while emitting IR for a caller — observed in CI, where the
+    /// whole package failed to build while Swift 6.4 compiled it happily. The
+    /// package supports Swift 6.0, so the older compiler is the one that
+    /// decides. Do not "tidy" the typed throw back on without checking that
+    /// toolchain.
     func listObjects<Row: Decodable & Sendable>(
         _ entity: String,
         as rowType: Row.Type
-    ) async throws(VictualError) -> [Row] {
+    ) async throws -> [Row] {
         let request = HTTPRequest(
             method: .get,
             scheme: nil,
