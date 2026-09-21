@@ -12,12 +12,18 @@ surprise.
 
 | Product | Contents |
 | --- | --- |
-| `VictualAPI` | Generated request/response types and the low-level client. All 143 operations. |
+| `VictualAPI` | Generated request/response types and the low-level client. All 145 operations. |
 | `VictualCore` | `VictualServer`, `VictualAPIKey`, `VictualClient`, `VictualError`, and Keychain-backed credential storage. |
 | `VictualUI` | `VictualSession` (`@Observable`), the SwiftUI environment key, and a ready-made `VictualConnectionView`. |
+| `VictualStock` | Observable stores over the client — what a connection is used for. No views. |
 
-`VictualUI` depends on `VictualCore`, which depends on `VictualAPI`. Import the
-highest layer you need.
+`VictualUI` and `VictualStock` both depend on `VictualCore`, which depends on
+`VictualAPI`. Import the highest layer you need.
+
+`Apps/Victual` is a macOS application built on those products — the package's first
+consumer, and how its seams get proven. See
+[its README](Apps/Victual/README.md) and
+[docs/plans/01-macos-stock-app.md](docs/plans/01-macos-stock-app.md).
 
 ## Requirements
 
@@ -90,7 +96,7 @@ let response = try await client.underlying.getStockProductsByProductId(
 let details = try response.ok.body.json
 ```
 
-`VictualCore` deliberately does not wrap all 143 operations. The convenience
+`VictualCore` deliberately does not wrap all 145 operations. The convenience
 methods in `VictualClient+Convenience.swift` exist to cover the connection flow
 and to demonstrate the pattern — generated call in, `VictualError` out. Add more
 the same way as a front end needs them.
@@ -179,14 +185,22 @@ change surfaces as a failing job rather than as drift.
 
 ### What the normalizer fixes, and why
 
-Victual's document is generated from Slim/PHP routes and does not load in
+Victual's document is generated from Slim/PHP routes and did not load in
 swift-openapi-generator as published.
+
+As of upstream commit `5995cab` only repair 2 and repair 6 still do anything —
+the sync report in `openapi/spec-lock.json` shows `pathsRewritten`,
+`danglingRefsRepaired`, `nullableKeywordsConverted` and
+`compositionConflictsResolved` all at zero, because upstream now publishes those
+shapes correctly. The repairs stay in the script, and `Tests/VictualAPITests`
+keeps asserting the shapes they produced: a repair that is a no-op today is a
+guard against a regression tomorrow, and it costs nothing to leave standing.
 
 1. **Slim route constraints in path templates.** Three routes are written
    `/labels/{kind:location|product|…}/{id:[0-9]+}/print`. That is not legal
    OpenAPI path templating; the constraint is already in the parameter's schema,
    so the suffix is stripped.
-2. **No `operationId` anywhere.** All 143 operations would otherwise be named
+2. **No `operationId` anywhere.** All 145 operations would otherwise be named
    things like `get_sol_stock_sol_products_sol__lcub_productId_rcub_`. Names are
    derived deterministically from the route
    (`getStockProductsByProductIdPriceHistory`), with a collision check, and can
@@ -224,7 +238,13 @@ guessing at the contract. They are recorded in `openapi/spec-lock.json` under
 Scripts/build.sh test                  # swift test, with the generated-code noise filtered out
 Scripts/verify-platforms.sh            # build every product for every supported platform
 Scripts/update-openapi.py              # re-sync the specification
+cd Apps/Victual && xcodegen generate   # regenerate the macOS application's project
 ```
+
+Design records live in [docs/plans/](docs/plans/README.md). Architectural decisions do
+not: those are in
+[Victual's ADR corpus](https://github.com/datagen24/victual/blob/master/docs/adr/README.md),
+which governs this package too.
 
 `swift build` on its own only covers the host platform. `verify-platforms.sh`
 drives `xcodebuild` across macOS, iOS, iOS Simulator, tvOS, watchOS and visionOS,
