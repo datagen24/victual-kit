@@ -28,10 +28,11 @@ bookings and the stock a household reads daily, and deliberately nothing else
 `CURRENT_PROJECT_VERSION` stays a plain integer, because that is the one the
 system orders builds by.
 
-One constraint to know before distribution: `CFBundleShortVersionString` is
-meant to be a period-separated list of integers, and the App Store enforces it.
-A Developer ID build accepts `0.1.0-MVP`; an App Store submission would not.
-That bears on plan 01's open question 1 and is not settled here.
+The suffix drops when the application moves to production. That is also what
+makes it submittable: `CFBundleShortVersionString` is meant to be a
+period-separated list of integers and the App Store enforces it, so a build
+still carrying `-MVP` would fail validation. The two happen together, so this is
+worth knowing rather than planning around.
 
 ## Building it
 

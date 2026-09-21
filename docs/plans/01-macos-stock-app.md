@@ -205,22 +205,23 @@ fact. Retained as the backstop.
 1. **Distribution.** Victual plan 17's Q3 is open, and a Mac target can be notarized for direct distribution without the App Store while iOS has no equivalent. Nothing here depends on the answer — the application builds and runs unsigned locally — but the entitlement set and the Keychain configuration do eventually.
 
    > **Response (2026-09-21):** the App Store is the intended channel, though not
-   > yet finalized. Two things already in the tree become blockers on the day
-   > that is settled, and both are one-line changes made deliberately rather
-   > than discovered at upload:
+   > yet finalized.
    >
-   > - **`MARKETING_VERSION` is `0.1.0-MVP`.** `CFBundleShortVersionString` is
-   >   meant to be a period-separated list of integers and App Store validation
-   >   enforces it, so this string passes a Developer ID build and fails
-   >   submission. Keeping the release stage means carrying it somewhere other
-   >   than that key.
-   > - **The data-protection Keychain is off**, because an ad-hoc signed build
-   >   holds no access group (see Executed). A signed build has a team and does
-   >   not need the file-based fallback, so `VictualApp.credentialStore` should
-   >   turn it back on at the same time — and that is a migration, not a flag:
-   >   a key already written to the file-based Keychain is not readable from the
-   >   data-protection one, so an existing install would silently ask for its
-   >   key again unless the two are read in turn.
+   > The `-MVP` suffix drops when the application moves to production, which is
+   > the same moment submission becomes possible — so `CFBundleShortVersionString`
+   > being required to be a period-separated list of integers resolves itself
+   > rather than needing a decision. Worth knowing only so that nobody tries to
+   > submit a build still carrying the suffix and reads the validation error as
+   > a mystery.
+   >
+   > One thing does need doing deliberately. **The data-protection Keychain is
+   > off**, because an ad-hoc signed build holds no access group (see
+   > [Executed](#executed)). A signed build has a team and does not need the
+   > file-based fallback, so `VictualApp.credentialStore` should turn it back on
+   > — and that is a migration, not a flag: a key already written to the
+   > file-based Keychain is not readable from the data-protection one, so an
+   > existing install would silently ask for its key again unless the two are
+   > read in turn.
    >
    > The entitlement set is otherwise already what the App Store wants: sandbox
    > on, `network.client`, and nothing else.
@@ -353,7 +354,8 @@ macOS 14. The columns are declared once and shared between them.
 
 1. **Distribution.** Answered inline above: the App Store, eventually. What
    shipped assumes it has not happened yet — an ad-hoc signature, the file-based
-   Keychain, and a version string that says `MVP` out loud.
+   Keychain, and a version string that says `MVP` out loud. The first two need
+   work when that changes; the third drops by itself.
 
 2. **Where the price column's absence is decided.** Still unsettled, but the
    two absences are now distinguishable in the UI rather than conflated. When
