@@ -13,15 +13,21 @@ import VictualUI
 struct InventoryView: View {
     @Environment(\.victualSession) private var session
 
-    @State private var filter: StockFilter = .all
+    /// Optional because that is the only shape `List`'s single-selection
+    /// initializer takes. A sidebar with nothing selected is reachable — click
+    /// the empty space below the rows — so ``filter`` falls back rather than
+    /// leaving the detail column blank.
+    @State private var selection: StockFilter? = .all
+
+    private var filter: StockFilter { selection ?? .all }
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $filter) {
+            List(selection: $selection) {
                 Section("Stock") {
-                    ForEach(StockFilter.allCases) { filter in
-                        Label(filter.title, systemImage: symbol(for: filter))
-                            .tag(filter)
+                    ForEach(StockFilter.allCases) { candidate in
+                        Label(candidate.title, systemImage: symbol(for: candidate))
+                            .tag(candidate)
                     }
                 }
             }
