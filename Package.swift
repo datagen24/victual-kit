@@ -18,6 +18,8 @@ let package = Package(
         .library(name: "VictualCore", targets: ["VictualCore"]),
         // SwiftUI session plumbing shared by every Apple-platform front end.
         .library(name: "VictualUI", targets: ["VictualUI"]),
+        // Observable stores over the client: what a connection is used for.
+        .library(name: "VictualStock", targets: ["VictualStock"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-openapi-generator.git", from: "1.13.0"),
@@ -46,6 +48,10 @@ let package = Package(
             name: "VictualUI",
             dependencies: ["VictualCore"]
         ),
+        .target(
+            name: "VictualStock",
+            dependencies: ["VictualCore"]
+        ),
         // Shared fakes for the test targets. Not a product: nothing outside this
         // package can import it.
         .target(
@@ -67,6 +73,10 @@ let package = Package(
         .testTarget(
             name: "VictualUITests",
             dependencies: ["VictualUI", "VictualTestSupport"]
+        ),
+        .testTarget(
+            name: "VictualStockTests",
+            dependencies: ["VictualStock", "VictualTestSupport"]
         ),
     ]
 )

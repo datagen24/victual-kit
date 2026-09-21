@@ -1,0 +1,56 @@
+name: Victual
+
+options:
+  bundleIdPrefix: dev.victual
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  VictualKit:
+    # The package this application exists to consume and to prove.
+    path: ../..
+
+targets:
+  Victual:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: Resources/Assets.xcassets
+    dependencies:
+      - package: VictualKit
+        product: VictualUI
+      - package: VictualKit
+        product: VictualStock
+    # XcodeGen writes this file and points INFOPLIST_FILE at it; it is generated
+    # output, like the .xcodeproj, and is not committed.
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Victual
+        LSMinimumSystemVersion: "14.0"
+        LSApplicationCategoryType: public.app-category.productivity
+    entitlements:
+      path: Resources/Victual.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.victual.Victual
+        PRODUCT_NAME: Victual
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # Ad-hoc signing is enough to develop against, and enough for the
+        # data-protection Keychain to work locally. A distribution identity is
+        # plan 01's open question 1. CI overrides this with
+        # CODE_SIGNING_ALLOWED=NO.
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: YES

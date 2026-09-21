@@ -30,6 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         destination:
+          - "generic/platform=macOS"
           - "generic/platform=iOS"
           - "generic/platform=iOS Simulator"
           - "generic/platform=tvOS"
@@ -45,6 +46,33 @@ jobs:
             -destination "${{ matrix.destination }}" \
             -skipPackagePluginValidation \
             -skipMacroValidation \
+            -quiet \
+            build
+
+  app:
+    name: Build the macOS application
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: XcodeGen
+        run: brew install xcodegen
+      # The .xcodeproj is generated output, like Sources/VictualAPI/openapi.json.
+      # project.yml is the checked-in source of truth.
+      - name: Generate the project
+        working-directory: Apps/Victual
+        run: xcodegen generate
+      # No signing identity on the runner, and none is needed to find a compile
+      # error. The Keychain path is exercised on a developer machine instead;
+      # see docs/plans/01-macos-stock-app.md, verification item 5.
+      - name: Build
+        working-directory: Apps/Victual
+        run: |
+          xcodebuild -project Victual.xcodeproj \
+            -scheme Victual \
+            -destination "platform=macOS" \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
             -quiet \
             build
 
