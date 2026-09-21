@@ -31,6 +31,11 @@ targets:
         CFBundleDisplayName: Victual
         LSMinimumSystemVersion: "14.0"
         LSApplicationCategoryType: public.app-category.productivity
+        # Without these two, XcodeGen writes its own defaults -- 1.0 and 1 --
+        # and MARKETING_VERSION below never reaches the bundle at all. The
+        # setting looked authoritative while the application reported 1.0.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
     entitlements:
       path: Resources/Victual.entitlements
       properties:
@@ -40,7 +45,12 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.victual.Victual
         PRODUCT_NAME: Victual
-        MARKETING_VERSION: "0.1.0"
+        # Follows Victual's own scheme (its version.json reads "0.1.1-MVP"),
+        # so an application and the server it talks to are legible as the same
+        # project at a glance. The suffix is a release stage -- Minimum Viable
+        # Product. CFBundleVersion below stays a plain integer, which is the one
+        # the system actually orders builds by.
+        MARKETING_VERSION: "0.1.0-MVP"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete

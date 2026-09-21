@@ -17,6 +17,22 @@ Two behaviours are deliberate and easy to "fix" wrongly:
   dashes is worse than no column. Inside a column that *is* shown, an em dash means no
   price was recorded, which is a different statement.
 
+## Version
+
+`0.1.0-MVP`, following Victual's own scheme — the server's `version.json` reads
+`0.1.1-MVP` — so the application and the instance it talks to read as one
+project. The suffix is a release stage, **Minimum Viable Product**: the five
+bookings and the stock a household reads daily, and deliberately nothing else
+(see plan 01's [Scope](../../docs/plans/01-macos-stock-app.md#scope)).
+
+`CURRENT_PROJECT_VERSION` stays a plain integer, because that is the one the
+system orders builds by.
+
+One constraint to know before distribution: `CFBundleShortVersionString` is
+meant to be a period-separated list of integers, and the App Store enforces it.
+A Developer ID build accepts `0.1.0-MVP`; an App Store submission would not.
+That bears on plan 01's open question 1 and is not settled here.
+
 ## Building it
 
 ```
