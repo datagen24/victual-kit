@@ -122,6 +122,31 @@ extension VictualClient {
         }
     }
 
+    /// The individual lots actually sitting in one location.
+    ///
+    /// This is what a locations sidebar should be built on. `GET /stock` reports
+    /// a product's *default* location, which is where new stock lands rather
+    /// than where the stock on hand is; the two differ as soon as anything is
+    /// transferred.
+    public func stockEntries(locationID: Int) async throws(VictualError) -> [StockEntry] {
+        try await perform {
+            try await underlying.getStockLocationsByLocationIdEntries(
+                .init(path: .init(locationId: locationID))
+            )
+        } unwrap: { output in
+            switch output {
+            case .ok(let response):
+                return try response.body.json.compactMap(StockEntry.init)
+            case .badRequest(let response):
+                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
+            case .unauthorized:
+                throw VictualError.unauthorized
+            case .undocumented(let statusCode, _):
+                throw VictualError.forStatus(statusCode)
+            }
+        }
+    }
+
     /// What the authenticating key's owner is allowed to do.
     ///
     /// This is the endpoint to ask about the acting user. `GET /user` is not
