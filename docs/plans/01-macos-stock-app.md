@@ -218,3 +218,112 @@ fact. Retained as the backstop.
 
 Items 1 through 4 run unattended. Item 5 needs a Mac and a real instance, and is the only
 one that exercises the Keychain against a signed bundle.
+
+## Executed
+
+Landed 2026-09-21 on `claude/victual-macos-app-abd0b0`, in three commits — the
+`VictualCore` boundary, the `VictualStock` stores, and the application's views.
+Items 1 through 4 of [Verification](#verification) pass; item 5 is outstanding
+and is described at the end of this section.
+
+### What shipped as designed
+
+The layering, the domain models, the endpoint wrappers, the five stores and the
+three-column window are as [Design](#design) describes them. `currentStock()`
+returns `[StockSummary]`, which is the source break this plan proposed. Booking
+commands are disabled with a tooltip naming the missing permission; the price
+column is absent rather than empty without `STOCK_PRICES_VIEW`. Undo is offered
+per transaction. `stock_entry_id` with an amount other than 1 is refused before
+the round trip, and a test asserts no request reaches the transport.
+
+### What this plan did not anticipate
+
+**`format: date-time` fields did not decode at all.** This plan's third mapping
+rule covers `format: date`, which generates as `Swift.String` and is parsed by
+hand. It says nothing about `format: date-time`, which generates as
+`Foundation.Date` and is decoded by the runtime's **strict ISO 8601** reader —
+while the server renders those fields the way its database stores them,
+`"2019-05-03 18:24:04"`, as the specification's own examples show throughout.
+Every read carrying `row_created_timestamp` — a stock entry, a location, a
+quantity unit, a booking's log rows — and `GET /system/db-changed-time` would
+have failed outright with a decoding error.
+
+`VictualDates` installs a `DateTranscoder` on the client configuration that
+reads ISO 8601 first and the database renderings second. This is the same
+exception [ADR-0005](https://github.com/datagen24/victual/blob/master/docs/adr/0005-wire-contract-is-the-invariant.md)
+documents for `chores.start_date`, one layer down and applying to every
+timestamp rather than to one field. It is worth recording upstream that the
+exception is general, not particular.
+
+**`GET /objects/{entity}` cannot be read through the generated client.** This
+plan proposed `quantityUnits()` and `locations()` "over `listObjects`". The
+route's response is an undiscriminated `oneOf` over nine entity schemas, which
+the generator decodes by trying each in declaration order and keeping the first
+that succeeds. `Product` is declared first and has no required properties, so
+every row of every entity decodes as a `Product`: a quantity unit loses
+`name_plural`, and a `locations_resolved` row — whose schema is not in the union
+at all — loses `path`. Both are exactly what this plan needs them for.
+
+That one route is therefore issued directly, through the same transport and the
+same middleware chain the generated client uses, and decoded into hand-written
+rows. It is the only such exception in the package and is documented where it
+lives. It is also worth reporting upstream: a discriminator, or simply declaring
+`id` required on `Product`, would make the union decodable.
+
+### Where the design was extended
+
+**The locations sidebar reads `GET /stock/locations/{id}/entries`.** This plan
+said the sidebar gains a locations tree without saying what selecting one shows.
+Filtering `GET /stock` was the obvious reading and is wrong: that endpoint
+reports a product's *default* location, which stops describing where the stock
+is the moment anything is transferred. The dedicated endpoint reports what is
+actually there.
+
+A location's value is computed with the server's own formula — price times
+amount, summed — and goes absent as soon as any lot in it carries no price.
+Summing only the priced lots would understate the total, which is the same
+mistake as defaulting a missing price to zero, one step removed.
+
+**`CapabilityGate` reads permissively until the server answers**, and treats
+`ADMIN` as a superuser marker. The first is so a window does not open with every
+control greyed out, wrongly, for the moment before `/user/capabilities`
+returns; the second is defensive, since the endpoint documents its permissions
+as already resolved. Both lean on the same backstop this plan names: `403` is
+handled on every write regardless.
+
+**`ChangePoller` gives up after three consecutive failures** rather than raising
+an error every interval forever. Polling is an optimisation over re-fetching
+`/stock` on a timer, and the application works by hand without it.
+
+**The price column needs two `Table` expressions**, not one conditional column:
+`TableColumnBuilder.buildIf` requires macOS 14.4 and this plan's floor is
+macOS 14. The columns are declared once and shared between them.
+
+### Open questions, revisited
+
+2. **Where the price column's absence is decided.** Still unsettled, but the
+   two absences are now distinguishable in the UI rather than conflated. When
+   `canSeePrices` is false the column is not rendered. When it is true, an em
+   dash inside the column means the server reported no price for that stock —
+   which is a different statement, and reads as one.
+
+3. **Refresh interval.** `ChangePoller.interval` defaults to 30 seconds, which
+   is a starting point and not the measurement this question asks for. The
+   poller is stopped on `onDisappear`; whether to stop when the window merely
+   loses key is still unmeasured.
+
+### Verification item 5 is outstanding
+
+Items 1 through 4 run unattended and pass: `Scripts/build.sh test` (136 tests),
+`Scripts/verify-platforms.sh` (all six platforms, `VictualStock` included),
+`Scripts/update-openapi.py --check`, and an `xcodebuild` of the application.
+
+Item 5 — the four checks against a live instance — is **not** done. The
+application launches, and `VictualCore` was confirmed against a real instance
+through the real `URLSession` transport: a rejected key returns `401`, which
+maps to `.unauthorized` and renders as "The API key was not accepted." Beyond
+that, every remaining check needs a valid API key, and one could not be minted
+from this session: keys are created in the web UI or written directly to
+`api_keys`, and neither path was available. The Keychain-restore path, the
+consume-and-undo round trip, the redacted price column and the read-only key's
+disabled commands are all still unverified against a real server.

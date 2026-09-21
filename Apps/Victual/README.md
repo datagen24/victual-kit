@@ -4,8 +4,18 @@ The first front end built on this package, and the thing that proves it. What it
 to do, and why it is layered the way it is, is in
 [docs/plans/01-macos-stock-app.md](../../docs/plans/01-macos-stock-app.md).
 
-Today it is a scaffold: it connects to an instance, restores from the Keychain, and shows
-an empty window. Nothing reads stock yet.
+It connects to an instance, restores from the Keychain, and shows a household's stock: a
+sidebar of the server's status buckets and the locations tree, a table of stock, a product
+inspector, and the five bookings with undo.
+
+Two behaviours are deliberate and easy to "fix" wrongly:
+
+- **Booking commands are disabled, not hidden**, when the key's owner lacks the permission,
+  and the tooltip names it. A household member should be able to see that consume exists
+  and that they lack `STOCK_CONSUME`.
+- **The price column is absent, not empty**, without `STOCK_PRICES_VIEW` — a column of em
+  dashes is worse than no column. Inside a column that *is* shown, an em dash means no
+  price was recorded, which is a different statement.
 
 ## Building it
 
