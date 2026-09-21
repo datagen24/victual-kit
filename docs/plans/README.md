@@ -23,4 +23,4 @@ This table is the authority on delivery status.
 
 | # | Plan | Status | Dependencies or remaining work |
 | --- | --- | --- | --- |
-| 01 | [macOS stock application](01-macos-stock-app.md) | Built 2026-09-21; unverified against a live instance | All three layers shipped and the plan has an [Executed](01-macos-stock-app.md#executed) section. Verification items 1-4 pass unattended. Item 5 needs an API key on a real instance: Keychain restore, consume-and-undo, the redacted price column and a read-only key are all still unverified. |
+| 01 | [macOS stock application](01-macos-stock-app.md) | Built and exercised against a live instance 2026-09-21 | All three layers shipped; see [Executed](01-macos-stock-app.md#executed). Items 1-4 pass unattended, and consume-and-undo passes against a real server — which is where two defects that broke every write were found. Keychain restore is untested against a signed bundle; the price-redaction and read-only-key checks need an instance newer than the 4.6.0 available. |

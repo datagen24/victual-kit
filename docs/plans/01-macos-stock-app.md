@@ -270,6 +270,35 @@ rows. It is the only such exception in the package and is documented where it
 lives. It is also worth reporting upstream: a discriminator, or simply declaring
 `id` required on `Product`, would make the union decodable.
 
+**Every write was refused, and the specification could not have shown it.** Two
+disagreements between what the document says and what the server does, neither
+reachable by a test built from the document — a stub made from the specification
+agrees with the specification. Both were found the first time a booking was sent
+to a real instance, and between them nothing could be written at all.
+
+`swift-openapi-runtime` sends `Content-Type: application/json; charset=utf-8`.
+Victual compares that header against the literal `application/json` with `!=`
+(`BaseApiController::GetParsedAndFilteredRequestBody`), so the parameter fails
+it and every booking is answered `400 Bad Content-Type`. RFC 9110 allows
+parameters and expects a receiver to parse the media type, so the server is
+wrong — but deployed instances will not care, so
+``JSONContentTypeMiddleware`` drops the parameter on the way out.
+
+`StockLogEntry.spoiled` and `CurrentStockResponse.is_aggregated_amount` are typed
+`boolean` and arrive as `0`/`1`: the first is an `integer` column, the second is
+assigned a bare number in `StockService.php`. A strict decoder refuses `0` where
+it was promised `true`, so all five bookings threw while decoding their own
+result — *after* the booking had been written, which is the worst shape such a
+failure can take. `Scripts/update-openapi.py` retypes them, consistently with
+every other 0/1 flag in the document, and this layer maps them back to `Bool`.
+The repair is deliberately surgical: `ProductDetailsResponse.has_childs` goes
+through `boolval()` and `CurrentUserCapabilities.read_only` through a PHP
+comparison, so both really are booleans and a test says they were left alone.
+
+This is what the plan's third mapping rule was reaching for, and it turns out to
+be broader than `ProductWithoutUserfields`. Both defects are worth reporting
+upstream.
+
 ### Where the design was extended
 
 **The locations sidebar reads `GET /stock/locations/{id}/entries`.** This plan
@@ -339,7 +368,24 @@ gate open, which means an older server is fully usable and the server's own
 `403` and field omission remain the backstop — the degradation this design
 already intended, now demonstrated against the case that provoked it.
 
-Checks 1 and 2 — Keychain restore, and consume-and-undo — are possible on that
-instance and remain undone only for want of an API key. Minting one means
-writing a row to `api_keys`, which this session was not permitted to do, and
-the alternative is the web UI, which means authenticating as a user.
+**Check 2 passes.** Driven through this package's own wrappers against that
+instance: purchase three, and stock goes 9 to 12; consume one, and it goes to
+11; undo the transaction, and it returns to 12. The booking's `transaction_id`
+is what undo is addressed to, and `spoiled` maps back from the wire's `0` to
+`false`. The reads were exercised at the same time and all decode from real
+rows — quantity units keeping `name_plural`, a location keeping its `path`,
+`row_created_timestamp` arriving as `"2026-09-19 14:30:23"` and parsing,
+prices visible at `17.91` for nine packs at `1.99`, and the below-minimum
+bucket reporting the shortfall. Both fixes above were found and made in the
+course of it.
+
+**Check 1 — Keychain restore — is still undone.** It needs the key typed into
+the connection form, and that field is a `SecureField`; background automation
+cannot type into a password field, so finishing it means taking over the
+screen. Nothing about the code is suspected: `VictualSession.restore()` is
+covered by `Tests/VictualUITests`, and what remains untested is specifically
+the data-protection Keychain against a signed bundle, which no unit test
+reaches.
+
+The temporary product, its stock and the temporary API key were removed
+afterwards; the instance was left as it was found.
