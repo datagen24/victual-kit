@@ -12,12 +12,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read is all any job needs: they build and test, and publish nothing.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test (macOS)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Nothing here talks to git after the checkout, and the jobs then run
+          # code out of the tree — Package.swift, the OpenAPI generator build
+          # plugin, xcodebuild. Leaving the token in .git/config would put it
+          # within reach of all of that.
+          persist-credentials: false
       - name: Toolchain
         run: swift --version
       - name: Test
@@ -38,6 +48,12 @@ jobs:
           - "generic/platform=visionOS"
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Nothing here talks to git after the checkout, and the jobs then run
+          # code out of the tree — Package.swift, the OpenAPI generator build
+          # plugin, xcodebuild. Leaving the token in .git/config would put it
+          # within reach of all of that.
+          persist-credentials: false
       # VictualAPI runs the swift-openapi-generator build plugin, which
       # xcodebuild will not execute unattended without this flag.
       - name: Build
@@ -54,6 +70,12 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Nothing here talks to git after the checkout, and the jobs then run
+          # code out of the tree — Package.swift, the OpenAPI generator build
+          # plugin, xcodebuild. Leaving the token in .git/config would put it
+          # within reach of all of that.
+          persist-credentials: false
       - name: XcodeGen
         run: brew install xcodegen
       # The .xcodeproj is generated output, like Sources/VictualAPI/openapi.json.
@@ -81,6 +103,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Nothing here talks to git after the checkout, and the jobs then run
+          # code out of the tree — Package.swift, the OpenAPI generator build
+          # plugin, xcodebuild. Leaving the token in .git/config would put it
+          # within reach of all of that.
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
