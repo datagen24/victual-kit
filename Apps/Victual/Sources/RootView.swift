@@ -30,7 +30,9 @@ struct RootView: View {
             }
         }
         .victualSession(session)
-        .onChange(of: session.client?.server) { _, _ in syncWorkspace() }
+        // The generation, not the address: reconnecting to the same instance
+        // with a rotated key is a new client wearing the same server.
+        .onChange(of: session.connectionGeneration) { _, _ in syncWorkspace() }
         .onAppear(perform: syncWorkspace)
     }
 
@@ -65,14 +67,17 @@ struct RootView: View {
     }
 
     /// Keeps the workspace matched to the session's current client.
+    ///
+    /// Rebuilds whenever the client changes at all, rather than only when the
+    /// address does. A reconnect to the same instance hands back a different
+    /// client — a rotated key, most obviously — and a workspace holding the old
+    /// one would go on using a credential the server has stopped accepting.
     private func syncWorkspace() {
+        workspace?.stop()
         guard let client = session.client else {
-            workspace?.stop()
             workspace = nil
             return
         }
-        guard workspace?.server != client.server else { return }
-        workspace?.stop()
         workspace = StockWorkspace(client: client)
     }
 }

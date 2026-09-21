@@ -31,6 +31,50 @@ struct VictualSessionTests {
         }
     }
 
+    @Test("A reconnect to the same instance is a new generation")
+    func reconnectingMovesTheGeneration() async {
+        // The case that motivated the counter: same address, different key.
+        // Anything watching the server alone would see nothing change and go on
+        // using a credential the server has stopped accepting.
+        let session = session(transport: StubTransport(status: 200, json: systemInfoJSON))
+
+        session.connect()
+        await session.waitForConnectionAttempt()
+        let first = session.connectionGeneration
+        let firstServer = session.client?.server
+
+        session.apiKeyText = "a-rotated-key"
+        session.connect()
+        await session.waitForConnectionAttempt()
+
+        #expect(session.state.isConnected)
+        #expect(session.client?.server == firstServer)
+        #expect(session.connectionGeneration > first)
+    }
+
+    @Test("Disconnecting and failing both move the generation too")
+    func everyClientChangeMovesTheGeneration() async {
+        let session = session(transport: StubTransport(status: 200, json: systemInfoJSON))
+        session.connect()
+        await session.waitForConnectionAttempt()
+        let connected = session.connectionGeneration
+
+        session.disconnect()
+
+        #expect(session.client == nil)
+        #expect(session.connectionGeneration > connected)
+
+        let failing = self.session(
+            transport: StubTransport(status: 401, json: #"{"error_message":"no"}"#)
+        )
+        let before = failing.connectionGeneration
+        failing.connect()
+        await failing.waitForConnectionAttempt()
+
+        #expect(failing.client == nil)
+        #expect(failing.connectionGeneration > before)
+    }
+
     @Test("Starts disconnected")
     func startsDisconnected() {
         let session = session(transport: StubTransport(status: 200, json: systemInfoJSON))

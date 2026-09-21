@@ -66,6 +66,7 @@ struct InventoryView: View {
                 action: action,
                 product: workspace.detail.detail,
                 productID: workspace.bookingTarget ?? workspace.detail.productID ?? 0,
+                entries: workspace.detail.orderedEntries,
                 store: workspace.stock,
                 onCommit: { await workspace.perform($0) }
             )

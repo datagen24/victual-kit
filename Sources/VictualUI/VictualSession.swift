@@ -59,6 +59,17 @@ public final class VictualSession {
     /// The authenticated client, available once ``state`` is `.connected`.
     public private(set) var client: VictualClient?
 
+    /// Increments every time ``client`` is replaced or cleared.
+    ///
+    /// Observe this rather than the client itself. ``VictualClient`` is a
+    /// struct with no identity to compare, and comparing what it exposes is not
+    /// enough: reconnecting to the *same* instance with a rotated key produces a
+    /// different client carrying the same ``VictualServer``, so anything keyed
+    /// on the address alone keeps using the old key until it starts being
+    /// answered `401`. Victual's keys expire, so that is a path a household
+    /// actually walks.
+    public private(set) var connectionGeneration: Int = 0
+
     /// The most recent credential-store failure, if any.
     ///
     /// Kept apart from ``state`` because it is not fatal: a session whose key
@@ -161,7 +172,7 @@ public final class VictualSession {
     public func disconnect() {
         attempt?.cancel()
         attempt = nil
-        client = nil
+        setClient(nil)
         state = .disconnected
     }
 
@@ -184,7 +195,7 @@ public final class VictualSession {
         }
 
         defaults.removeObject(forKey: Self.lastServerDefaultsKey)
-        client = nil
+        setClient(nil)
         apiKeyText = ""
         state = .disconnected
     }
@@ -198,7 +209,7 @@ public final class VictualSession {
         do {
             server = try VictualServer(userEnteredText: serverText)
         } catch {
-            client = nil
+            setClient(nil)
             state = .failed(VictualError.mapping(error))
             return
         }
@@ -208,14 +219,23 @@ public final class VictualSession {
         do {
             let information = try await candidate.verifyConnection()
             guard !Task.isCancelled else { return }
-            client = candidate
+            setClient(candidate)
             state = .connected(information)
             await remember(key, for: server)
         } catch {
             guard !Task.isCancelled else { return }
-            client = nil
+            setClient(nil)
             state = .failed(error)
         }
+    }
+
+    /// Replaces ``client`` and moves ``connectionGeneration`` with it.
+    ///
+    /// The only place `client` is written, so the generation cannot drift out of
+    /// step with what it is meant to describe.
+    private func setClient(_ newClient: VictualClient?) {
+        client = newClient
+        connectionGeneration &+= 1
     }
 
     /// Saves the key and marks the instance as the one to restore next launch.

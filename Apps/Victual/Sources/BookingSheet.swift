@@ -12,6 +12,9 @@ struct BookingSheet: View {
     let action: StockAction
     let product: ProductDetail?
     let productID: Int
+    /// The lots the inspector already knows about, which is where they come
+    /// from for every scope but a location.
+    let entries: [StockEntry]
     let store: StockStore
     let onCommit: (BookingRequest) async -> Void
 
@@ -124,7 +127,7 @@ struct BookingSheet: View {
         Picker("Container", selection: $stockEntryID) {
             Text("Whichever is due first").tag(String?.none)
             ForEach(availableEntries, id: \.id) { entry in
-                Text(describe(entry)).tag(String?.some(entry.stockID ?? ""))
+                Text(describe(entry)).tag(entry.stockID)
             }
         }
         .disabled(availableEntries.isEmpty)
@@ -176,8 +179,14 @@ struct BookingSheet: View {
     // MARK: - Behaviour
 
     private var availableEntries: [StockEntry] {
-        // Only entries this booking could actually name.
-        store.locationEntries.isEmpty ? [] : store.locationEntries.filter { $0.productID == productID }
+        // The inspector's lots when it has them, and the selected location's
+        // otherwise. Reading only the latter left the picker disabled in every
+        // status scope, where nothing has fetched a location's entries.
+        //
+        // A lot with no `stock_id` is dropped: that string is what a booking
+        // names, so an entry without one cannot be the subject of this picker.
+        let candidates = entries.isEmpty ? store.locationEntries : entries
+        return candidates.filter { $0.productID == productID && $0.stockID != nil }
     }
 
     private var isValid: Bool {

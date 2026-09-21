@@ -26,12 +26,7 @@ final class StockWorkspace {
     /// The product a booking sheet is about.
     var bookingTarget: Int?
 
-    /// The client this workspace was built for, so ``RootView`` can tell whether
-    /// the session has since reconnected to somewhere else.
-    let server: VictualServer
-
     init(client: VictualClient) {
-        self.server = client.server
         self.stock = StockStore(client: client)
         self.detail = ProductDetailStore(client: client)
         self.bookings = BookingController(client: client)
