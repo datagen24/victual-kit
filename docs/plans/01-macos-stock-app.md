@@ -321,9 +321,25 @@ Items 1 through 4 run unattended and pass: `Scripts/build.sh test` (136 tests),
 Item 5 — the four checks against a live instance — is **not** done. The
 application launches, and `VictualCore` was confirmed against a real instance
 through the real `URLSession` transport: a rejected key returns `401`, which
-maps to `.unauthorized` and renders as "The API key was not accepted." Beyond
-that, every remaining check needs a valid API key, and one could not be minted
-from this session: keys are created in the web UI or written directly to
-`api_keys`, and neither path was available. The Keychain-restore path, the
-consume-and-undo round trip, the redacted price column and the read-only key's
-disabled commands are all still unverified against a real server.
+maps to `.unauthorized` and renders as "The API key was not accepted."
+
+The instance available for testing is **Victual 4.6.0 at migration 286**, which
+is behind this plan's stated dependency in two ways that matter:
+
+- `GET /user/capabilities` answers `404`. The route arrived with upstream
+  `5995cab`, which [Dependencies](#dependencies) names. Checks 3 and 4 both rest
+  on `CapabilityGate`, so neither can be demonstrated there at all.
+- `api_keys.read_only` does not exist; it arrives in migration `0287`. A
+  read-only MCP key cannot be created, so check 4 has no subject.
+
+That turned up something worth having: an instance old enough to 404 that route
+exists in the wild, so the application's behaviour against one is now pinned by
+a test rather than assumed. `CapabilityGate` records the `404` and leaves every
+gate open, which means an older server is fully usable and the server's own
+`403` and field omission remain the backstop — the degradation this design
+already intended, now demonstrated against the case that provoked it.
+
+Checks 1 and 2 — Keychain restore, and consume-and-undo — are possible on that
+instance and remain undone only for want of an API key. Minting one means
+writing a row to `api_keys`, which this session was not permitted to do, and
+the alternative is the web UI, which means authenticating as a user.

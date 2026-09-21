@@ -216,6 +216,28 @@ struct CapabilityGateTests {
         #expect(gate.canSeePrices)
     }
 
+    /// Not hypothetical: a Victual 4.6.0 instance (migration 286) serves no
+    /// `/user/capabilities` at all, because the route arrived with upstream
+    /// `5995cab`. An older server must degrade to "ask the server" rather than
+    /// to "refuse everything".
+    @Test("A server too old to have the endpoint does not lock the user out")
+    func toleratesAServerWithoutTheEndpoint() async {
+        var table = RouteTable()
+        table.failures = ["/user/capabilities": 404]
+        let (client, _) = testClient(table)
+        let gate = CapabilityGate(client: client)
+
+        await gate.load()
+
+        #expect(gate.state.error == .notFound)
+        #expect(gate.capabilities == nil)
+        #expect(StockAction.allCases.allSatisfy { gate.canWrite($0) })
+        #expect(gate.canSeePrices)
+        #expect(!gate.isReadOnlyKey)
+        // Nothing to name as an obstacle, because nothing is known to be one.
+        #expect(gate.reason(.consume) == nil)
+    }
+
     @Test("A failed capability fetch leaves the gates open and records why")
     func failureIsNotALockout() async {
         var table = RouteTable()
