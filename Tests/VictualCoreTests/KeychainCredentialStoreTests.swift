@@ -20,9 +20,9 @@ enum KeychainAvailability {
         )
         let server = VictualServer(instanceURL: URL(string: "https://probe.invalid")!)
         do {
-            try store.save("probe", for: server)
-            defer { try? store.removeAll() }
-            return try store.apiKey(for: server) == "probe"
+            try store.saveSynchronously("probe", for: server)
+            defer { try? store.removeAllSynchronously() }
+            return try store.apiKeySynchronously(for: server) == "probe"
         } catch {
             return false
         }
@@ -46,34 +46,34 @@ struct KeychainCredentialStoreTests {
     private let server = VictualServer(instanceURL: URL(string: "https://victual.example.com")!)
 
     private func tearDown() {
-        try? store.removeAll()
+        try? store.removeAllSynchronously()
     }
 
     @Test("Stores and reads back a key")
     func roundTripsAKey() async throws {
         defer { tearDown() }
 
-        try store.save("sk-victual-abc", for: server)
+        try await store.save("sk-victual-abc", for: server)
 
-        #expect(try store.apiKey(for: server) == "sk-victual-abc")
+        #expect(try await store.apiKey(for: server) == "sk-victual-abc")
     }
 
     @Test("Reports no key for an instance it has never seen")
     func returnsNilWhenAbsent() async throws {
         defer { tearDown() }
 
-        #expect(try store.apiKey(for: server) == nil)
+        #expect(try await store.apiKey(for: server) == nil)
     }
 
     @Test("Replaces the key rather than keeping the stale one")
     func overwritesExistingKey() async throws {
         defer { tearDown() }
 
-        try store.save("first", for: server)
-        try store.save("second", for: server)
+        try await store.save("first", for: server)
+        try await store.save("second", for: server)
 
-        #expect(try store.apiKey(for: server) == "second")
-        #expect(try store.savedServers().count == 1)
+        #expect(try await store.apiKey(for: server) == "second")
+        #expect(try await store.savedServers().count == 1)
     }
 
     @Test("Keeps instances apart")
@@ -81,11 +81,11 @@ struct KeychainCredentialStoreTests {
         defer { tearDown() }
 
         let other = VictualServer(instanceURL: URL(string: "https://work.example.com")!)
-        try store.save("home-key", for: server)
-        try store.save("work-key", for: other)
+        try await store.save("home-key", for: server)
+        try await store.save("work-key", for: other)
 
-        #expect(try store.apiKey(for: server) == "home-key")
-        #expect(try store.apiKey(for: other) == "work-key")
+        #expect(try await store.apiKey(for: server) == "home-key")
+        #expect(try await store.apiKey(for: other) == "work-key")
     }
 
     @Test("Forgetting one instance leaves the others alone")
@@ -93,20 +93,20 @@ struct KeychainCredentialStoreTests {
         defer { tearDown() }
 
         let other = VictualServer(instanceURL: URL(string: "https://work.example.com")!)
-        try store.save("home-key", for: server)
-        try store.save("work-key", for: other)
+        try await store.save("home-key", for: server)
+        try await store.save("work-key", for: other)
 
-        try store.removeAPIKey(for: server)
+        try await store.removeAPIKey(for: server)
 
-        #expect(try store.apiKey(for: server) == nil)
-        #expect(try store.apiKey(for: other) == "work-key")
+        #expect(try await store.apiKey(for: server) == nil)
+        #expect(try await store.apiKey(for: other) == "work-key")
     }
 
     @Test("Forgetting an unknown instance is not an error")
     func removingAbsentKeySucceeds() async throws {
         defer { tearDown() }
 
-        try store.removeAPIKey(for: server)
+        try await store.removeAPIKey(for: server)
     }
 
     @Test("Enumeration rebuilds the server, custom API prefix included")
@@ -117,10 +117,10 @@ struct KeychainCredentialStoreTests {
             instanceURL: URL(string: "https://example.com/victual")!,
             apiPathPrefix: "rest/api"
         )
-        try store.save("a", for: server)
-        try store.save("b", for: custom)
+        try await store.save("a", for: server)
+        try await store.save("b", for: custom)
 
-        let saved = try store.savedServers()
+        let saved = try await store.savedServers()
 
         #expect(saved.count == 2)
         #expect(saved.contains(server))
@@ -135,12 +135,12 @@ struct KeychainCredentialStoreTests {
     func clearsEverything() async throws {
         defer { tearDown() }
 
-        try store.save("a", for: server)
-        try store.save("b", for: VictualServer(instanceURL: URL(string: "https://b.test")!))
+        try await store.save("a", for: server)
+        try await store.save("b", for: VictualServer(instanceURL: URL(string: "https://b.test")!))
 
-        try store.removeAll()
+        try await store.removeAll()
 
-        #expect(try store.savedServers().isEmpty)
+        #expect(try await store.savedServers().isEmpty)
     }
 }
 

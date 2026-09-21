@@ -37,13 +37,20 @@ struct InventoryView: View {
             .navigationSubtitle(subtitle)
             .searchable(text: $stock.searchText, placement: .toolbar, prompt: "Search stock")
             .toolbar { toolbar }
-            .navigationSplitViewColumnWidth(min: 360, ideal: 560)
+            // 460 is what the table's four columns need before they start
+            // scrolling horizontally; below that the due date and the value
+            // fall off the right-hand edge, which is how a stock list stops
+            // answering the two questions it exists to answer.
+            .navigationSplitViewColumnWidth(min: 460, ideal: 560)
         } detail: {
             ProductInspector(
                 store: workspace.detail,
                 showsPrices: workspace.capabilities.canSeePrices,
                 locationName: { workspace.stock.location($0)?.path ?? workspace.stock.location($0)?.displayName }
             )
+            // Given an ideal, the inspector stops taking every point the window
+            // has spare and leaving the table to scroll.
+            .navigationSplitViewColumnWidth(min: 280, ideal: 320)
         }
         .task { await workspace.start() }
         .onDisappear { workspace.stop() }

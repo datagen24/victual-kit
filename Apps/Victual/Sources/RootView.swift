@@ -18,6 +18,7 @@ struct RootView: View {
         Group {
             if session.state.isConnected, let workspace {
                 InventoryView(workspace: workspace)
+                    .safeAreaInset(edge: .top) { credentialWarning }
             } else if session.state.isConnected {
                 // Connected, but the workspace has not been built yet — one
                 // frame at most.
@@ -31,6 +32,36 @@ struct RootView: View {
         .victualSession(session)
         .onChange(of: session.client?.server) { _, _ in syncWorkspace() }
         .onAppear(perform: syncWorkspace)
+    }
+
+    /// Says so when the API key could not be saved.
+    ///
+    /// The session keeps this apart from its connection state on purpose — a key
+    /// that could not be stored is not a broken session — but that is exactly
+    /// how it goes unnoticed: the connection form, which is where the error is
+    /// otherwise visible, is replaced the instant the connection succeeds. The
+    /// first symptom would then be retyping the key at the next launch, with no
+    /// explanation offered.
+    @ViewBuilder
+    private var credentialWarning: some View {
+        if let error = session.credentialStoreError {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("This key was not saved, and will have to be entered again next launch.")
+                    Text(error.errorDescription ?? "The Keychain refused the request.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.bar)
+            .overlay(alignment: .bottom) { Divider() }
+        }
     }
 
     /// Keeps the workspace matched to the session's current client.
