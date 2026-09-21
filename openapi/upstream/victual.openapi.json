@@ -3,7 +3,7 @@
 	"info": {
 		"title": "Victual REST API",
 		"description": "Authentication is done via API keys (header *VICTUAL-API-KEY* or same named query parameter), which you can manage [here](PlaceHolderManageApiKeysUrl).<br>Additionally requests from within the frontend are also valid (via session cookie).",
-		"version": "xxx",
+		"version": "0.1.1-MVP",
 		"license": {
 			"name": "MIT (code originating from upstream grocy) AND BSD-3-Clause (Victual)",
 			"url": "https://github.com/datagen24/victual/blob/master/LICENSE.md"
@@ -11,7 +11,7 @@
 	},
 	"servers": [
 		{
-			"url": "xxx"
+			"url": "/api"
 		}
 	],
 	"tags": [
@@ -239,7 +239,7 @@
 				}
 			}
 		},
-		"/labels/{kind:product|stock_entry|recipe|chore|battery}/{id:[0-9]+}/context": {
+		"/labels/{kind}/{id}/context": {
 			"get": {
 				"tags": [
 					"Labels"
@@ -306,6 +306,36 @@
 					},
 					"404": {
 						"description": "Target not found"
+					}
+				}
+			}
+		},
+		"/openapi/specification": {
+			"get": {
+				"summary": "Returns this OpenAPI specification",
+				"tags": [
+					"System"
+				],
+				"responses": {
+					"200": {
+						"description": "This document",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The request carried no valid API key or session",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiError"
+								}
+							}
+						}
 					}
 				}
 			}
@@ -788,7 +818,6 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
 									"oneOf": [
 										{
 											"$ref": "#/components/schemas/Product"
@@ -1892,6 +1921,47 @@
 				}
 			}
 		},
+		"/user/capabilities": {
+			"get": {
+				"summary": "Returns what the credential making this request may do",
+				"description": "The type and read-only flag of the API key that authenticated the request (null and false for a session), and the acting user's resolved permission names. Needs no permission: the answer is about the caller. The MCP sidecar uses it to list only the tools a key can use.",
+				"tags": [
+					"Current user"
+				],
+				"responses": {
+					"200": {
+						"description": "The acting credential's capabilities",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CurrentUserCapabilities"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The operation was not successful",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error400"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The request carried no valid API key or session",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/user/settings": {
 			"get": {
 				"summary": "Returns all settings of the currently logged in user",
@@ -2281,7 +2351,7 @@
 		"/stock/entry/{entryId}/measure": {
 			"post": {
 				"summary": "Records a new measurement of an already-open, single-unit stock entry",
-				"description": "Requires STOCK_EDIT. Records a reversible measurement (ADR-0022, docs/plans/28-open-container-measurement.md) rather than a consumption - stock.amount, the container count, never changes. The entry must already be a coherent single opened container (open, amount = 1); a fresh measurement on a container being opened for the first time is taken through the measurement field of POST /stock/products/{productId}/open instead.",
+				"description": "Requires STOCK_EDIT. Records a reversible measurement (ADR-0022, docs/plans/landed/28-open-container-measurement.md) rather than a consumption - stock.amount, the container count, never changes. The entry must already be a coherent single opened container (open, amount = 1); a fresh measurement on a container being opened for the first time is taken through the measurement field of POST /stock/products/{productId}/open instead.",
 				"tags": [
 					"Stock"
 				],
@@ -6089,8 +6159,10 @@
 										"minLength": 1
 									},
 									"description": {
-										"type": "string",
-										"nullable": true
+										"type": [
+											"string",
+											"null"
+										]
 									},
 									"code": {
 										"type": "string",
@@ -6185,8 +6257,10 @@
 										"minLength": 1
 									},
 									"description": {
-										"type": "string",
-										"nullable": true
+										"type": [
+											"string",
+											"null"
+										]
 									}
 								}
 							}
@@ -7826,7 +7900,7 @@
 				}
 			}
 		},
-		"/labels/{kind:location|product|stock_entry|recipe|chore|battery}/{id:[0-9]+}/print": {
+		"/labels/{kind}/{id}/print": {
 			"post": {
 				"tags": [
 					"Labels"
@@ -7894,7 +7968,7 @@
 				}
 			}
 		},
-		"/labels/{kind:location|product|stock_entry|recipe|chore|battery}/{id:[0-9]+}/revised-print": {
+		"/labels/{kind}/{id}/revised-print": {
 			"post": {
 				"tags": [
 					"Label printing"
@@ -9019,7 +9093,7 @@
 					"enable_tare_weight_handling": {
 						"type": "integer",
 						"deprecated": true,
-						"description": "Retired as a mechanism under ADR-0022 (2026-09-14): its arithmetic is removed and enabling it (0 -> 1) is refused with 400. Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze. See docs/plans/28-open-container-measurement.md."
+						"description": "Retired as a mechanism under ADR-0022 (2026-09-14): its arithmetic is removed and enabling it (0 -> 1) is refused with 400. Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze. See docs/plans/landed/28-open-container-measurement.md."
 					},
 					"not_check_stock_fulfillment_for_recipes": {
 						"type": "integer"
@@ -9030,7 +9104,7 @@
 					"tare_weight": {
 						"type": "number",
 						"deprecated": true,
-						"description": "Retired as a mechanism under ADR-0022 (2026-09-14); tare now belongs to the stock entry (an opened purchased container, docs/plans/28-open-container-measurement.md) or the location (a vessel, docs/plans/29-working-container-replenishment.md). Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze."
+						"description": "Retired as a mechanism under ADR-0022 (2026-09-14); tare now belongs to the stock entry (an opened purchased container, docs/plans/landed/28-open-container-measurement.md) or the location (a vessel, docs/plans/landed/29-working-container-replenishment.md). Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze."
 					},
 					"min_stock_amount": {
 						"type": "number",
@@ -9084,14 +9158,25 @@
 						"description": "The amount a one-tap refill moves, from default_refill_location_id_from to default_refill_location_id_to (public/viewjs/stockoverview.js) - the same pattern quick_consume_amount already follows for the quick consume button."
 					},
 					"default_refill_location_id_from": {
-						"type": "integer",
-						"nullable": true,
+						"type": [
+							"integer",
+							"null"
+						],
 						"description": "Where backstock for a one-tap refill normally comes from, e.g. dry stores for a kitchen bin."
 					},
 					"default_refill_location_id_to": {
-						"type": "integer",
-						"nullable": true,
+						"type": [
+							"integer",
+							"null"
+						],
 						"description": "Which location a one-tap refill fills by default, e.g. the kitchen bin itself. A refill prompt raised by product_location_missing uses that row's own location instead of this default."
+					},
+					"default_shopping_list_id": {
+						"type": [
+							"integer",
+							"null"
+						],
+						"description": "The shopping list a product lands on by default when added without choosing one (plan 05 part C). Null falls back to the pre-existing behaviour."
 					}
 				},
 				"example": {
@@ -9117,7 +9202,8 @@
 					"move_on_open": "1",
 					"quick_refill_amount": "1",
 					"default_refill_location_id_from": null,
-					"default_refill_location_id_to": null
+					"default_refill_location_id_to": null,
+					"default_shopping_list_id": null
 				}
 			},
 			"ProductWithoutUserfields": {
@@ -9144,7 +9230,7 @@
 					"enable_tare_weight_handling": {
 						"type": "integer",
 						"deprecated": true,
-						"description": "Retired as a mechanism under ADR-0022 (2026-09-14): its arithmetic is removed and enabling it (0 -> 1) is refused with 400. Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze. See docs/plans/28-open-container-measurement.md."
+						"description": "Retired as a mechanism under ADR-0022 (2026-09-14): its arithmetic is removed and enabling it (0 -> 1) is refused with 400. Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze. See docs/plans/landed/28-open-container-measurement.md."
 					},
 					"not_check_stock_fulfillment_for_recipes": {
 						"type": "integer"
@@ -9155,7 +9241,7 @@
 					"tare_weight": {
 						"type": "number",
 						"deprecated": true,
-						"description": "Retired as a mechanism under ADR-0022 (2026-09-14); tare now belongs to the stock entry (an opened purchased container, docs/plans/28-open-container-measurement.md) or the location (a vessel, docs/plans/29-working-container-replenishment.md). Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze."
+						"description": "Retired as a mechanism under ADR-0022 (2026-09-14); tare now belongs to the stock entry (an opened purchased container, docs/plans/landed/28-open-container-measurement.md) or the location (a vessel, docs/plans/landed/29-working-container-replenishment.md). Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze."
 					},
 					"min_stock_amount": {
 						"type": "number",
@@ -9205,14 +9291,25 @@
 						"description": "The amount a one-tap refill moves, from default_refill_location_id_from to default_refill_location_id_to (public/viewjs/stockoverview.js) - the same pattern quick_consume_amount already follows for the quick consume button."
 					},
 					"default_refill_location_id_from": {
-						"type": "integer",
-						"nullable": true,
+						"type": [
+							"integer",
+							"null"
+						],
 						"description": "Where backstock for a one-tap refill normally comes from, e.g. dry stores for a kitchen bin."
 					},
 					"default_refill_location_id_to": {
-						"type": "integer",
-						"nullable": true,
+						"type": [
+							"integer",
+							"null"
+						],
 						"description": "Which location a one-tap refill fills by default, e.g. the kitchen bin itself. A refill prompt raised by product_location_missing uses that row's own location instead of this default."
+					},
+					"default_shopping_list_id": {
+						"type": [
+							"integer",
+							"null"
+						],
+						"description": "The shopping list a product lands on by default when added without choosing one (plan 05 part C). Null falls back to the pre-existing behaviour."
 					}
 				},
 				"example": {
@@ -9238,7 +9335,8 @@
 					"move_on_open": "1",
 					"quick_refill_amount": "1",
 					"default_refill_location_id_from": null,
-					"default_refill_location_id_to": null
+					"default_refill_location_id_to": null,
+					"default_shopping_list_id": null
 				}
 			},
 			"QuantityUnit": {
@@ -9295,23 +9393,31 @@
 						"format": "date-time"
 					},
 					"parent_location_id": {
-						"type": "integer",
-						"nullable": true,
+						"type": [
+							"integer",
+							"null"
+						],
 						"description": "The location this one sits inside, or null for a root location. Locations form a tree at most 6 levels deep; see LocationResolved for the resolved form."
 					},
 					"storage_class_id": {
-						"type": "integer",
-						"nullable": true,
+						"type": [
+							"integer",
+							"null"
+						],
 						"description": "How cold this location is kept, or null for unclassified - see StorageClass. When set, it is the sole writer of is_freezer: an update that sets this column also overwrites is_freezer from the class's treats_as_freezer, whatever value this same request otherwise submits for it. When null or absent, is_freezer stays independently editable."
 					},
 					"tare_weight": {
-						"type": "number",
-						"nullable": true,
+						"type": [
+							"number",
+							"null"
+						],
 						"description": "The empty weight of this location's own container - a bin, a spice jar - in tare_qu_id, or null when this location is not weighed as a vessel. Set alongside tare_qu_id (ADR-0022 decision 4); a vessel's tare lives on the location rather than on a stock entry because every refill mints a new entry via TransferProduct()."
 					},
 					"tare_qu_id": {
-						"type": "integer",
-						"nullable": true,
+						"type": [
+							"integer",
+							"null"
+						],
 						"description": "The quantity unit tare_weight and a gross weighing are given in. A location has no stock unit of its own to borrow, so this is independent of any product's units; StockService::WeighLocation() converts through the stocked product's own quantity unit conversions and refuses when no path exists."
 					},
 					"userfields": {
@@ -9342,13 +9448,17 @@
 						"type": "string"
 					},
 					"min_temp_c": {
-						"type": "number",
-						"nullable": true,
+						"type": [
+							"number",
+							"null"
+						],
 						"description": "Lower bound of the class's temperature range in degrees Celsius. Metadata in v1 - nothing derives a class from an observed temperature."
 					},
 					"max_temp_c": {
-						"type": "number",
-						"nullable": true
+						"type": [
+							"number",
+							"null"
+						]
 					},
 					"treats_as_freezer": {
 						"type": "integer",
@@ -9453,7 +9563,7 @@
 			},
 			"ProductSubstitutionResolved": {
 				"type": "object",
-				"description": "Candidates that will do where to_product_id is called for: one row per directed edge from product_substitutions plus one row per existing parent/child pair from products_resolved, unioned (a pair already covered by products_resolved is excluded from the directed rows, so a product is never listed twice for the same candidate). direction distinguishes the two sources; there is no transitive closure (a substitutes for b and b for c does not offer a for c), and no quantity factor - see docs/plans/31-directed-substitution.md's open questions 1 and 2.",
+				"description": "Candidates that will do where to_product_id is called for: one row per directed edge from product_substitutions plus one row per existing parent/child pair from products_resolved, unioned (a pair already covered by products_resolved is excluded from the directed rows, so a product is never listed twice for the same candidate). direction distinguishes the two sources; there is no transitive closure (a substitutes for b and b for c does not offer a for c), and no quantity factor - see docs/plans/landed/31-directed-substitution.md's open questions 1 and 2.",
 				"properties": {
 					"id": {
 						"type": "integer",
@@ -9480,9 +9590,11 @@
 						"description": "The candidate's own current stock amount, read from stock_current on its own account - not rolled up to a parent, even when the candidate is itself a sub product under the existing parent/child mechanism."
 					},
 					"from_product_best_before_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date",
-						"nullable": true,
 						"description": "The candidate's earliest best-before date currently in stock, or null if it has none."
 					}
 				},
@@ -9603,24 +9715,32 @@
 						"format": "date-time"
 					},
 					"opened_amount": {
-						"type": "number",
-						"nullable": true,
-						"description": "ADR-0022, docs/plans/28-open-container-measurement.md. The measured remainder of this container, in opened_qu_id - always net contents, whatever the measurement's original input (see the gross/tare fields of the /open and /measure endpoints). Present only where open = 1 and amount = 1 (a measurement describes exactly one container); null otherwise"
+						"type": [
+							"number",
+							"null"
+						],
+						"description": "ADR-0022, docs/plans/landed/28-open-container-measurement.md. The measured remainder of this container, in opened_qu_id - always net contents, whatever the measurement's original input (see the gross/tare fields of the /open and /measure endpoints). Present only where open = 1 and amount = 1 (a measurement describes exactly one container); null otherwise"
 					},
 					"opened_qu_id": {
-						"type": "integer",
-						"nullable": true,
+						"type": [
+							"integer",
+							"null"
+						],
 						"description": "The quantity unit opened_amount was measured in. Present exactly where opened_amount is"
 					},
 					"opened_tare": {
-						"type": "number",
-						"nullable": true,
+						"type": [
+							"number",
+							"null"
+						],
 						"description": "The container weight subtracted from a gross reading to produce opened_amount, in opened_qu_id. Null when the measurement was already net contents, or when there is no measurement"
 					},
 					"opened_measured_at": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date-time",
-						"nullable": true,
 						"description": "When opened_amount was recorded, so a stale figure is visible as stale. Present exactly where opened_amount is"
 					}
 				},
@@ -9722,7 +9842,7 @@
 					},
 					"stock_amount_measured": {
 						"type": "number",
-						"description": "ADR-0022, docs/plans/28-open-container-measurement.md. The measured (not merely counted) contents across this product's opened, measured entries, in the stock unit - additive, kept separate from stock_amount and stock_amount_opened rather than folded into them"
+						"description": "ADR-0022, docs/plans/landed/28-open-container-measurement.md. The measured (not merely counted) contents across this product's opened, measured entries, in the stock unit - additive, kept separate from stock_amount and stock_amount_opened rather than folded into them"
 					},
 					"stock_value": {
 						"type": "number",
@@ -9864,7 +9984,7 @@
 			},
 			"ProductPriceHistory": {
 				"type": "object",
-				"description": "Every field here is a price. GET /stock/products/{productId}/price-history refuses the whole call with 403 for a caller without STOCK_PRICES_VIEW rather than filtering these fields out of an otherwise-200 response - see x-visibility on the operation, not on individual properties here.",
+				"description": "Every field here is a price. GET /stock/products/{productId}/price-history refuses the whole call with 403 for a caller without STOCK_PRICES_VIEW rather than filtering these fields out of an otherwise-200 response - see this schema's own x-visibility, which classifies every property under it rather than needing one per property.",
 				"x-visibility": "STOCK_PRICES_VIEW",
 				"properties": {
 					"date": {
@@ -10106,6 +10226,34 @@
 					}
 				}
 			},
+			"CurrentUserCapabilities": {
+				"type": "object",
+				"required": [
+					"key_type",
+					"read_only",
+					"permissions"
+				],
+				"properties": {
+					"key_type": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "The authenticating API key's type (\"default\" or \"mcp\"), or null when the request was not authenticated by a key"
+					},
+					"read_only": {
+						"type": "boolean",
+						"description": "Whether the authenticating API key is read-only: anything but GET, HEAD and OPTIONS is answered 403, as are the three GET routes that change something (/calendar/ical/sharing-link, /stock/barcodes/external-lookup/{barcode} and /print/shoppinglist/thermal)"
+					},
+					"permissions": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The acting user's resolved permission names, sorted"
+					}
+				}
+			},
 			"UserDto": {
 				"type": "object",
 				"description": "A user object without the *password* and with an additional *display_name* property",
@@ -10147,6 +10295,14 @@
 					"key_hint": {
 						"type": "string",
 						"description": "The last four characters of the key, kept so that two keys can be told apart once neither can be read."
+					},
+					"key_type": {
+						"type": "string",
+						"description": "\"default\" for a regular key, \"mcp\" for a key issued for the MCP sidecar, or a special-purpose type (calendar sharing, label worker/verifier/renderer)."
+					},
+					"read_only": {
+						"type": "integer",
+						"description": "1 when the key may only make GET, HEAD and OPTIONS requests; anything else is answered 403, as are the three GET routes that change something (/calendar/ical/sharing-link, /stock/barcodes/external-lookup/{barcode} and /print/shoppinglist/thermal)."
 					},
 					"expires": {
 						"type": "string",
@@ -10369,8 +10525,10 @@
 						"$ref": "#/components/schemas/StockTransactionType"
 					},
 					"price": {
-						"type": "number",
-						"nullable": true,
+						"type": [
+							"number",
+							"null"
+						],
 						"description": "Null for a booking that carries no price, such as a consumption - a legitimate value, distinct from this field being absent for a caller without STOCK_PRICES_VIEW",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
@@ -10382,22 +10540,30 @@
 						"format": "date-time"
 					},
 					"opened_amount": {
-						"type": "number",
-						"nullable": true,
-						"description": "ADR-0022, docs/plans/28-open-container-measurement.md. Mirrors the stock entry's measurement at the time of this booking, so an undo can restore it after the entry itself is gone"
+						"type": [
+							"number",
+							"null"
+						],
+						"description": "ADR-0022, docs/plans/landed/28-open-container-measurement.md. Mirrors the stock entry's measurement at the time of this booking, so an undo can restore it after the entry itself is gone"
 					},
 					"opened_qu_id": {
-						"type": "integer",
-						"nullable": true
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"opened_tare": {
-						"type": "number",
-						"nullable": true
+						"type": [
+							"number",
+							"null"
+						]
 					},
 					"opened_measured_at": {
-						"type": "string",
-						"format": "date-time",
-						"nullable": true
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time"
 					}
 				}
 			},
@@ -10981,6 +11147,142 @@
 					"userentities"
 				]
 			},
+			"ExposedEntity_NotIncludingNotEditable": {
+				"type": "string",
+				"description": "ExposedEntity minus ExposedEntityNoEdit, computed and overwritten at request time by GET /api/openapi/specification (OpenApiController::DocumentationSpec()).",
+				"enum": [
+					"batteries",
+					"chores",
+					"equipment",
+					"locations",
+					"meal_plan",
+					"meal_plan_sections",
+					"mqtt_product_entities",
+					"product_barcodes",
+					"product_groups",
+					"product_location_min_stock",
+					"product_substitutions",
+					"products",
+					"quantity_unit_conversions",
+					"quantity_units",
+					"recipes",
+					"recipes_nestings",
+					"recipes_pos",
+					"shopping_list",
+					"shopping_lists",
+					"shopping_locations",
+					"storage_classes",
+					"task_categories",
+					"tasks",
+					"userentities",
+					"userfields",
+					"userobjects"
+				]
+			},
+			"ExposedEntity_NotIncludingNotDeletable": {
+				"type": "string",
+				"description": "ExposedEntity minus ExposedEntityNoDelete, computed and overwritten at request time by GET /api/openapi/specification (OpenApiController::DocumentationSpec()).",
+				"enum": [
+					"api_keys",
+					"batteries",
+					"chores",
+					"equipment",
+					"locations",
+					"meal_plan",
+					"meal_plan_sections",
+					"mqtt_product_entities",
+					"product_barcodes",
+					"product_groups",
+					"product_location_min_stock",
+					"product_substitutions",
+					"products",
+					"quantity_unit_conversions",
+					"quantity_units",
+					"recipes",
+					"recipes_nestings",
+					"recipes_pos",
+					"shopping_list",
+					"shopping_lists",
+					"shopping_locations",
+					"storage_classes",
+					"task_categories",
+					"tasks",
+					"userentities",
+					"userfields",
+					"userobjects"
+				]
+			},
+			"ExposedEntity_NotIncludingNotListable": {
+				"type": "string",
+				"description": "ExposedEntity minus ExposedEntityNoListing, computed and overwritten at request time by GET /api/openapi/specification (OpenApiController::DocumentationSpec()).",
+				"enum": [
+					"batteries",
+					"battery_charge_cycles",
+					"chores",
+					"chores_log",
+					"equipment",
+					"label_assets",
+					"label_drivers",
+					"label_media_profiles",
+					"label_printer_status",
+					"label_printers",
+					"label_render_requests",
+					"label_template_versions",
+					"label_templates",
+					"label_worker_capabilities",
+					"label_workers",
+					"locations",
+					"locations_resolved",
+					"meal_plan",
+					"meal_plan_sections",
+					"mqtt_product_entities",
+					"permission_hierarchy",
+					"print_attempts",
+					"print_evidence",
+					"print_jobs",
+					"product_barcodes",
+					"product_barcodes_view",
+					"product_groups",
+					"product_groups_missing",
+					"product_groups_resolved",
+					"product_location_min_stock",
+					"product_location_missing",
+					"product_substitutions",
+					"product_substitutions_resolved",
+					"products",
+					"products_average_price",
+					"products_last_purchased",
+					"quantity_unit_conversions",
+					"quantity_unit_conversions_resolved",
+					"quantity_units",
+					"recipes",
+					"recipes_nestings",
+					"recipes_pos",
+					"recipes_pos_resolved",
+					"roles",
+					"shopping_list",
+					"shopping_lists",
+					"shopping_locations",
+					"stock",
+					"stock_current_locations",
+					"stock_log",
+					"storage_classes",
+					"task_categories",
+					"tasks",
+					"uihelper_shopping_list",
+					"userentities",
+					"userfields",
+					"userobjects"
+				]
+			},
+			"ExposedEntity_IncludingUserEntities": {
+				"type": "string",
+				"description": "ExposedEntity plus this install's custom userfield entities (UserfieldsService::GetEntities()). Per-install data that does not exist at spec-authoring time, so this is a permissive string rather than a fabricated enum; GET /api/openapi/specification overwrites it with the real enum at request time (OpenApiController::DocumentationSpec())."
+			},
+			"ExposedEntity_IncludingUserEntities_NotIncludingNotEditable": {
+				"type": "string",
+				"description": "ExposedEntity_IncludingUserEntities minus ExposedEntityNoEdit, plus the 'stock' exception. Per-install data that does not exist at spec-authoring time, so this is a permissive string rather than a fabricated enum; GET /api/openapi/specification overwrites it with the real enum at request time (OpenApiController::DocumentationSpec())."
+			},
 			"StockTransactionType": {
 				"type": "string",
 				"enum": [
@@ -11025,8 +11327,10 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string",
-						"nullable": true
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"builtin": {
 						"type": "integer",
@@ -11065,15 +11369,19 @@
 						"type": "integer"
 					},
 					"parent": {
-						"type": "integer",
-						"nullable": true
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"permission_name": {
 						"type": "string"
 					},
 					"via_roles": {
-						"type": "string",
-						"nullable": true,
+						"type": [
+							"string",
+							"null"
+						],
 						"description": "Sorted comma-separated immutable role codes granting this permission; null when no role grants it."
 					}
 				}

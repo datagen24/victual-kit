@@ -3,9 +3,12 @@ import Testing
 
 @testable import VictualAPI
 
-/// Guards the normalizations `Scripts/update-openapi.py` applies to the upstream
-/// specification. If one of these fails after a spec sync, the upstream document
-/// changed shape and the script needs revisiting — not the test.
+/// Guards the shapes the generated bindings depend on. Some were produced by
+/// `Scripts/update-openapi.py`'s repairs and are now supplied by upstream
+/// directly; the assertions are unchanged either way, because what matters is
+/// the document the generator reads. If one fails after a spec sync, the
+/// upstream document changed shape and the script needs revisiting — not the
+/// test.
 @Suite("Generated bindings")
 struct GeneratedSpecTests {
     private let decoder: JSONDecoder = {
@@ -21,11 +24,12 @@ struct GeneratedSpecTests {
 
     @Test("Required-but-nullable fields decode a JSON null")
     func nullableRequiredFieldsAreOptional() throws {
-        // `UserPermission.parent` and `.via_roles` are listed in `required` and
-        // marked `nullable` upstream, using the OpenAPI 3.0 spelling inside a
-        // 3.1 document. Without the normalizer's translation to a `["integer",
-        // "null"]` type union they generate as non-optional, and every response
-        // where a permission has no parent fails to decode.
+        // `UserPermission.parent` and `.via_roles` are listed in `required`.
+        // Unless their type is the union `["integer", "null"]` they generate as
+        // non-optional, and every response where a permission has no parent
+        // fails to decode. Upstream writes the union itself as of commit
+        // 5995cab; before that the normalizer translated it from the OpenAPI
+        // 3.0 `nullable` spelling, and still would if upstream regressed.
         let json = Data(
             """
             {
@@ -65,11 +69,13 @@ struct GeneratedSpecTests {
         #expect(permission.viaRoles == "ADMIN")
     }
 
-    @Test("Routes carrying Slim constraints generated usable operations")
-    func routeConstraintsWereStripped() {
-        // `/labels/{kind:location|product|…}/{id:[0-9]+}/print` is not legal
-        // OpenAPI path templating; the normalizer reduces it to
-        // `/labels/{kind}/{id}/print`, and the enum survives on the parameter.
+    @Test("Label routes generated usable operations")
+    func labelRoutesAreTemplatedLegally() {
+        // These were written `/labels/{kind:location|product|…}/{id:[0-9]+}/print`
+        // upstream, which is not legal OpenAPI path templating; the normalizer
+        // reduced them to `/labels/{kind}/{id}/print`. Upstream writes the legal
+        // form as of commit 5995cab. Either way the constraint lives on the
+        // parameter schema, which is what the operation name below proves.
         #expect(Operations.PostLabelsByKindByIdPrint.id == "postLabelsByKindByIdPrint")
         #expect(Operations.GetLabelsByKindByIdContext.id == "getLabelsByKindByIdContext")
     }
