@@ -120,7 +120,9 @@ extension StockLogRow {
             amount: schema.amount ?? 0,
             transactionID: schema.transactionId,
             transactionType: schema.transactionType.map(StockTransactionKind.init),
-            spoiled: schema.spoiled ?? false,
+            // `integer` 0/1 on the wire, like every other flag this API sends;
+            // the document said `boolean` and `Scripts/update-openapi.py` repairs it.
+            spoiled: .fromWireFlag(schema.spoiled),
             stockID: schema.stockId,
             price: schema.price,
             note: schema.note,

@@ -255,6 +255,53 @@ def repair_dangling_refs(document: dict) -> list[str]:
     return repaired
 
 
+# Response fields the document types `boolean` that the server sends as the 0/1
+# integer its column actually holds. Keyed by schema name -> property names.
+#
+# Not a style quibble: a strict decoder refuses `0` where it was promised `true`,
+# so the whole response fails. `stock_log.spoiled` is an `integer` column, and a
+# booking's response is what carries it -- which means all five bookings fail to
+# decode their own result, after the booking has already happened.
+#
+# Retyping is the honest repair. Every other 0/1 flag in this document is already
+# typed `integer` (see `ProductWithoutUserfields`), so this makes the odd one out
+# consistent with its siblings rather than inventing a shape. Clients map it to a
+# real `Bool` at their own boundary.
+# Each entry below was confirmed against the server rather than guessed at:
+# `stock_log.spoiled` is an `integer` column, and `is_aggregated_amount` is
+# assigned a bare `0`/`1` in StockService.php. Fields that reach the wire through
+# `boolval()` -- `ProductDetailsResponse.has_childs` -- really are booleans and
+# are deliberately not listed.
+INTEGER_FLAGS_TYPED_AS_BOOLEAN = {
+    "StockLogEntry": ["spoiled"],
+    "StockJournal": ["spoiled"],
+    "CurrentStockResponse": ["is_aggregated_amount"],
+}
+
+
+def retype_integer_flags(document: dict) -> list[str]:
+    """Retypes the `boolean` properties the server actually sends as 0/1."""
+    retyped: list[str] = []
+    schemas = document.get("components", {}).get("schemas", {})
+    for schema_name, properties in INTEGER_FLAGS_TYPED_AS_BOOLEAN.items():
+        schema = schemas.get(schema_name)
+        if not isinstance(schema, dict):
+            continue
+        for property_name in properties:
+            node = schema.get("properties", {}).get(property_name)
+            if not isinstance(node, dict) or node.get("type") != "boolean":
+                continue
+            node["type"] = "integer"
+            # The default has to move with the type, or the document promises a
+            # `false` for a field it now says is a number.
+            if node.get("default") is False:
+                node["default"] = 0
+            elif node.get("default") is True:
+                node["default"] = 1
+            retyped.append(f"{schema_name}.{property_name}")
+    return retyped
+
+
 def lint(document: dict) -> list[str]:
     """Report upstream modelling mistakes that are left in place deliberately.
 
@@ -294,6 +341,7 @@ def normalize(raw: bytes, overrides: dict[str, str]) -> tuple[dict, dict]:
 
     repaired = repair_dangling_refs(document)
     report["danglingRefsRepaired"] = repaired
+    report["integerFlagsRetyped"] = retype_integer_flags(document)
 
     document["servers"] = [{"url": SERVER_URL, "description": SERVER_DESCRIPTION}]
     report["serverPlaceholderReplaced"] = True

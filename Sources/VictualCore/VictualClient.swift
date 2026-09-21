@@ -43,8 +43,11 @@ public struct VictualClient: Sendable {
         transport: any ClientTransport,
         middlewares: [any ClientMiddleware] = []
     ) {
+        // The content-type shim runs outermost so that it sees, and can
+        // correct, whatever the runtime set -- see ``JSONContentTypeMiddleware``
+        // for why a request without it is refused by the server.
         let authenticated: [any ClientMiddleware] =
-            [APIKeyAuthenticationMiddleware(apiKey)] + middlewares
+            [JSONContentTypeMiddleware(), APIKeyAuthenticationMiddleware(apiKey)] + middlewares
         self.server = server
         self.underlying = VictualAPIClient(
             serverURL: server.baseURL,

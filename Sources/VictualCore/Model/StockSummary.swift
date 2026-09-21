@@ -89,7 +89,9 @@ extension StockSummary {
             // Straight across, deliberately: absent stays absent.
             value: schema.value,
             nextDueDate: VictualDates.day(schema.bestBeforeDate),
-            isAggregatedAmount: schema.isAggregatedAmount ?? false,
+            // Another `integer` 0/1 the document called `boolean`; the server
+            // assigns it as a bare number. Repaired in the spec normalizer.
+            isAggregatedAmount: .fromWireFlag(schema.isAggregatedAmount),
             product: schema.product.flatMap(ProductSummary.init)
         )
     }

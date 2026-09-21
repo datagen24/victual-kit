@@ -4,8 +4,8 @@
   "upstreamPath": "victual.openapi.json",
   "upstreamCommit": "5995cab9fe9c67c392a2a62e9cac8523a5b9d734",
   "upstreamSha256": "8007f558357f8b38137de8d8fe5c38aaa8982721e75d8d62f1344b2de6cdfa3a",
-  "generatedSha256": "e0e09493ba95a7c2b1c152d86f694b502765865eb3aeee1575b89d4105cbf234",
-  "syncedAt": "2026-09-21T12:45:06Z",
+  "generatedSha256": "4c022e248db04f64f59763178d492be6ecabb2d5d33dbc364468677415050f3d",
+  "syncedAt": "2026-09-21T14:28:48Z",
   "normalizations": {
     "pathsRewritten": 0,
     "operationIdsAssigned": 145,
@@ -13,6 +13,11 @@
     "nullableKeywordsConverted": 0,
     "compositionConflictsResolved": 0,
     "danglingRefsRepaired": [],
+    "integerFlagsRetyped": [
+      "StockLogEntry.spoiled",
+      "StockJournal.spoiled",
+      "CurrentStockResponse.is_aggregated_amount"
+    ],
     "serverPlaceholderReplaced": true,
     "upstreamIssuesLeftInPlace": [
       "paths//user/get/responses/200/content/application/json/schema: declared `object` but carries `items`; generated as a free-form object rather than the referenced type"

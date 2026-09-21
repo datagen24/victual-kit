@@ -7,17 +7,21 @@ import VictualTestSupport
 
 /// A booking response with two rows under one transaction, which is the normal
 /// shape: one user action commonly touches several stock entries.
+///
+/// `spoiled` is `0`, not `false`, because that is what the server sends — the
+/// column is an `integer` and the document's `boolean` is a mistake that
+/// `Scripts/update-openapi.py` repairs. Confirmed against a live instance.
 private let bookingJSON = """
     [
       {
         "id": 401, "product_id": 7, "amount": -1, "transaction_id": "tx-abc",
-        "transaction_type": "consume", "spoiled": false, "stock_id": "lot-1",
+        "transaction_type": "consume", "spoiled": 0, "stock_id": "lot-1",
         "price": null, "used_date": "2026-09-21",
         "row_created_timestamp": "2026-09-21 09:14:02"
       },
       {
         "id": 402, "product_id": 7, "amount": -1, "transaction_id": "tx-abc",
-        "transaction_type": "consume", "spoiled": false, "stock_id": "lot-2",
+        "transaction_type": "consume", "spoiled": 0, "stock_id": "lot-2",
         "price": null, "used_date": "2026-09-21",
         "row_created_timestamp": "2026-09-21 09:14:02"
       }
@@ -231,6 +235,8 @@ struct BookingResultTests {
         #expect(booking.totalAmount == -2)
         #expect(booking.rows.first?.transactionType == .consume)
         #expect(booking.rows.first?.stockID == "lot-1")
+        // The wire's 0 became a real Bool at the boundary.
+        #expect(booking.rows.first?.spoiled == false)
     }
 
     @Test("A consumption's null price is not a zero")
@@ -240,6 +246,16 @@ struct BookingResultTests {
         let booking = try await client.consume(productID: 7, amount: 2)
 
         #expect(booking.rows.first?.price == nil)
+    }
+
+    @Test("A spoiled row's 1 becomes true")
+    func spoiledFlagMapsToBool() async throws {
+        let json = #"[{"id": 1, "product_id": 7, "amount": -1, "spoiled": 1, "transaction_id": "t"}]"#
+        let client = VictualClient.stubbed(StubTransport(status: 200, json: json))
+
+        let booking = try await client.consume(productID: 7, amount: 1, spoiled: true)
+
+        #expect(booking.rows.first?.spoiled == true)
     }
 
     @Test("A booking with no transaction id is not offered for undo")
