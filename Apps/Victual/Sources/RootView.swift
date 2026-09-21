@@ -1,19 +1,27 @@
 import SwiftUI
+import VictualCore
+import VictualStock
 import VictualUI
 
 /// Shows the inventory once a connection exists, and the connection form until
 /// then.
 ///
-/// The session goes into the environment on both branches: the connection form
-/// takes it directly, but a sheet or an inspector presented over the form still
-/// finds it there.
+/// The workspace is rebuilt when the session connects to a different instance,
+/// and torn down when it disconnects: a window must never show one household's
+/// stock under another's connection.
 struct RootView: View {
     let session: VictualSession
 
+    @State private var workspace: StockWorkspace?
+
     var body: some View {
         Group {
-            if session.state.isConnected {
-                InventoryView()
+            if session.state.isConnected, let workspace {
+                InventoryView(workspace: workspace)
+            } else if session.state.isConnected {
+                // Connected, but the workspace has not been built yet — one
+                // frame at most.
+                ProgressView().controlSize(.large)
             } else {
                 VictualConnectionView(session: session)
                     .formStyle(.grouped)
@@ -21,6 +29,20 @@ struct RootView: View {
             }
         }
         .victualSession(session)
+        .onChange(of: session.client?.server) { _, _ in syncWorkspace() }
+        .onAppear(perform: syncWorkspace)
+    }
+
+    /// Keeps the workspace matched to the session's current client.
+    private func syncWorkspace() {
+        guard let client = session.client else {
+            workspace?.stop()
+            workspace = nil
+            return
+        }
+        guard workspace?.server != client.server else { return }
+        workspace?.stop()
+        workspace = StockWorkspace(client: client)
     }
 }
 
