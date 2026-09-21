@@ -110,7 +110,7 @@ struct VictualClientTests {
         let stock = try await client.currentStock()
 
         #expect(stock.count == 1)
-        #expect(stock.first?.productId == 7)
+        #expect(stock.first?.productID == 7)
         #expect(stock.first?.amount == 2.5)
     }
 }

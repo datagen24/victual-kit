@@ -17,6 +17,25 @@ public struct StubTransport: ClientTransport {
         public let request: HTTPRequest
         public let baseURL: URL
 
+        /// The request body as it went on the wire, or `nil` for a request
+        /// without one.
+        ///
+        /// Collected by the transport before the responder sees it, so a test
+        /// can assert on what was actually encoded. An `HTTPBody` is a stream
+        /// and can only be read once, so the responder is handed a fresh body
+        /// over the same bytes.
+        public let body: Data?
+
+        /// The request body decoded as a JSON object.
+        ///
+        /// What a booking test wants: the fields that went on the wire, without
+        /// depending on key order or whitespace, both of which the runtime's
+        /// encoder chooses rather than this package.
+        public var jsonBody: [String: Any]? {
+            guard let body else { return nil }
+            return try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        }
+
         /// The absolute URL the transport would request.
         ///
         /// Mirrors `URLSessionTransport`, which concatenates the operation path
@@ -86,8 +105,14 @@ public struct StubTransport: ClientTransport {
         baseURL: URL,
         operationID: String
     ) async throws -> (HTTPResponse, HTTPBody?) {
-        recorder.record(Recorded(request: request, baseURL: baseURL))
-        return try await respond(request, body, baseURL, operationID)
+        var captured: Data?
+        var forwarded: HTTPBody?
+        if let body {
+            captured = try await Data(collecting: body, upTo: 8 * 1_024 * 1_024)
+            forwarded = HTTPBody(captured!)
+        }
+        recorder.record(Recorded(request: request, baseURL: baseURL, body: captured))
+        return try await respond(request, forwarded, baseURL, operationID)
     }
 }
 

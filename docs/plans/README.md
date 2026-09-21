@@ -23,4 +23,4 @@ This table is the authority on delivery status.
 
 | # | Plan | Status | Dependencies or remaining work |
 | --- | --- | --- | --- |
-| 01 | [macOS stock application](01-macos-stock-app.md) | Scaffolded 2026-09-21; implementation not started | Structure, build plumbing and CI are in the tree. `VictualCore` mapping, `VictualStock` stores and the views are unwritten. |
+| 01 | [macOS stock application](01-macos-stock-app.md) | `VictualCore` landed 2026-09-21; stores and views in progress | The wire boundary is written: domain models, the stock reads, the five bookings and undo, with the encoded request body of each booking pinned by a test. `VictualStock` stores and the views remain. |
