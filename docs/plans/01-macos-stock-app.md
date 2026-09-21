@@ -204,6 +204,28 @@ fact. Retained as the backstop.
 
 1. **Distribution.** Victual plan 17's Q3 is open, and a Mac target can be notarized for direct distribution without the App Store while iOS has no equivalent. Nothing here depends on the answer — the application builds and runs unsigned locally — but the entitlement set and the Keychain configuration do eventually.
 
+   > **Response (2026-09-21):** the App Store is the intended channel, though not
+   > yet finalized.
+   >
+   > The `-MVP` suffix drops when the application moves to production, which is
+   > the same moment submission becomes possible — so `CFBundleShortVersionString`
+   > being required to be a period-separated list of integers resolves itself
+   > rather than needing a decision. Worth knowing only so that nobody tries to
+   > submit a build still carrying the suffix and reads the validation error as
+   > a mystery.
+   >
+   > One thing does need doing deliberately. **The data-protection Keychain is
+   > off**, because an ad-hoc signed build holds no access group (see
+   > [Executed](#executed)). A signed build has a team and does not need the
+   > file-based fallback, so `VictualApp.credentialStore` should turn it back on
+   > — and that is a migration, not a flag: a key already written to the
+   > file-based Keychain is not readable from the data-protection one, so an
+   > existing install would silently ask for its key again unless the two are
+   > read in turn.
+   >
+   > The entitlement set is otherwise already what the App Store wants: sandbox
+   > on, `network.client`, and nothing else.
+
 2. **Where the price column's absence is decided.** `CapabilityGate.canSeePrices` reads `STOCK_PRICES_VIEW`, but the server also simply omits the fields. The two should agree; if they ever disagree, the response is the authority and the gate is stale. Whether the UI should notice that disagreement or quietly follow the data is unsettled.
 
 3. **Refresh interval.** `db-changed-time` polling is cheap but not free. A sensible default while the window is key, and whether to stop entirely when it is not, needs measurement rather than a guess.
@@ -218,3 +240,201 @@ fact. Retained as the backstop.
 
 Items 1 through 4 run unattended. Item 5 needs a Mac and a real instance, and is the only
 one that exercises the Keychain against a signed bundle.
+
+## Executed
+
+Landed 2026-09-21 on `claude/victual-macos-app-abd0b0`, in three commits — the
+`VictualCore` boundary, the `VictualStock` stores, and the application's views.
+Items 1 through 4 of [Verification](#verification) pass; item 5 is outstanding
+and is described at the end of this section.
+
+### What shipped as designed
+
+The layering, the domain models, the endpoint wrappers, the five stores and the
+three-column window are as [Design](#design) describes them. `currentStock()`
+returns `[StockSummary]`, which is the source break this plan proposed. Booking
+commands are disabled with a tooltip naming the missing permission; the price
+column is absent rather than empty without `STOCK_PRICES_VIEW`. Undo is offered
+per transaction. `stock_entry_id` with an amount other than 1 is refused before
+the round trip, and a test asserts no request reaches the transport.
+
+### What this plan did not anticipate
+
+**`format: date-time` fields did not decode at all.** This plan's third mapping
+rule covers `format: date`, which generates as `Swift.String` and is parsed by
+hand. It says nothing about `format: date-time`, which generates as
+`Foundation.Date` and is decoded by the runtime's **strict ISO 8601** reader —
+while the server renders those fields the way its database stores them,
+`"2019-05-03 18:24:04"`, as the specification's own examples show throughout.
+Every read carrying `row_created_timestamp` — a stock entry, a location, a
+quantity unit, a booking's log rows — and `GET /system/db-changed-time` would
+have failed outright with a decoding error.
+
+`VictualDates` installs a `DateTranscoder` on the client configuration that
+reads ISO 8601 first and the database renderings second. This is the same
+exception [ADR-0005](https://github.com/datagen24/victual/blob/master/docs/adr/0005-wire-contract-is-the-invariant.md)
+documents for `chores.start_date`, one layer down and applying to every
+timestamp rather than to one field. It is worth recording upstream that the
+exception is general, not particular.
+
+**`GET /objects/{entity}` cannot be read through the generated client.** This
+plan proposed `quantityUnits()` and `locations()` "over `listObjects`". The
+route's response is an undiscriminated `oneOf` over nine entity schemas, which
+the generator decodes by trying each in declaration order and keeping the first
+that succeeds. `Product` is declared first and has no required properties, so
+every row of every entity decodes as a `Product`: a quantity unit loses
+`name_plural`, and a `locations_resolved` row — whose schema is not in the union
+at all — loses `path`. Both are exactly what this plan needs them for.
+
+That one route is therefore issued directly, through the same transport and the
+same middleware chain the generated client uses, and decoded into hand-written
+rows. It is the only such exception in the package and is documented where it
+lives. It is also worth reporting upstream: a discriminator, or simply declaring
+`id` required on `Product`, would make the union decodable.
+
+**Every write was refused, and the specification could not have shown it.** Two
+disagreements between what the document says and what the server does, neither
+reachable by a test built from the document — a stub made from the specification
+agrees with the specification. Both were found the first time a booking was sent
+to a real instance, and between them nothing could be written at all.
+
+`swift-openapi-runtime` sends `Content-Type: application/json; charset=utf-8`.
+Victual compares that header against the literal `application/json` with `!=`
+(`BaseApiController::GetParsedAndFilteredRequestBody`), so the parameter fails
+it and every booking is answered `400 Bad Content-Type`. RFC 9110 allows
+parameters and expects a receiver to parse the media type, so the server is
+wrong — but deployed instances will not care, so
+``JSONContentTypeMiddleware`` drops the parameter on the way out.
+
+`StockLogEntry.spoiled` and `CurrentStockResponse.is_aggregated_amount` are typed
+`boolean` and arrive as `0`/`1`: the first is an `integer` column, the second is
+assigned a bare number in `StockService.php`. A strict decoder refuses `0` where
+it was promised `true`, so all five bookings threw while decoding their own
+result — *after* the booking had been written, which is the worst shape such a
+failure can take. `Scripts/update-openapi.py` retypes them, consistently with
+every other 0/1 flag in the document, and this layer maps them back to `Bool`.
+The repair is deliberately surgical: `ProductDetailsResponse.has_childs` goes
+through `boolval()` and `CurrentUserCapabilities.read_only` through a PHP
+comparison, so both really are booleans and a test says they were left alone.
+
+This is what the plan's third mapping rule was reaching for, and it turns out to
+be broader than `ProductWithoutUserfields`. Both defects are worth reporting
+upstream.
+
+### Where the design was extended
+
+**The locations sidebar reads `GET /stock/locations/{id}/entries`.** This plan
+said the sidebar gains a locations tree without saying what selecting one shows.
+Filtering `GET /stock` was the obvious reading and is wrong: that endpoint
+reports a product's *default* location, which stops describing where the stock
+is the moment anything is transferred. The dedicated endpoint reports what is
+actually there.
+
+A location's value is computed with the server's own formula — price times
+amount, summed — and goes absent as soon as any lot in it carries no price.
+Summing only the priced lots would understate the total, which is the same
+mistake as defaulting a missing price to zero, one step removed.
+
+**`CapabilityGate` reads permissively until the server answers**, and treats
+`ADMIN` as a superuser marker. The first is so a window does not open with every
+control greyed out, wrongly, for the moment before `/user/capabilities`
+returns; the second is defensive, since the endpoint documents its permissions
+as already resolved. Both lean on the same backstop this plan names: `403` is
+handled on every write regardless.
+
+**`ChangePoller` gives up after three consecutive failures** rather than raising
+an error every interval forever. Polling is an optimisation over re-fetching
+`/stock` on a timer, and the application works by hand without it.
+
+**The price column needs two `Table` expressions**, not one conditional column:
+`TableColumnBuilder.buildIf` requires macOS 14.4 and this plan's floor is
+macOS 14. The columns are declared once and shared between them.
+
+### Open questions, revisited
+
+1. **Distribution.** Answered inline above: the App Store, eventually. What
+   shipped assumes it has not happened yet — an ad-hoc signature, the file-based
+   Keychain, and a version string that says `MVP` out loud. The first two need
+   work when that changes; the third drops by itself.
+
+2. **Where the price column's absence is decided.** Still unsettled, but the
+   two absences are now distinguishable in the UI rather than conflated. When
+   `canSeePrices` is false the column is not rendered. When it is true, an em
+   dash inside the column means the server reported no price for that stock —
+   which is a different statement, and reads as one.
+
+3. **Refresh interval.** `ChangePoller.interval` defaults to 30 seconds, which
+   is a starting point and not the measurement this question asks for. The
+   poller is stopped on `onDisappear`; whether to stop when the window merely
+   loses key is still unmeasured.
+
+### Verification item 5 is outstanding
+
+Items 1 through 4 run unattended and pass: `Scripts/build.sh test` (136 tests),
+`Scripts/verify-platforms.sh` (all six platforms, `VictualStock` included),
+`Scripts/update-openapi.py --check`, and an `xcodebuild` of the application.
+
+Item 5 — the four checks against a live instance — is **not** done. The
+application launches, and `VictualCore` was confirmed against a real instance
+through the real `URLSession` transport: a rejected key returns `401`, which
+maps to `.unauthorized` and renders as "The API key was not accepted."
+
+The instance available for testing is **Victual 4.6.0 at migration 286**, which
+is behind this plan's stated dependency in two ways that matter:
+
+- `GET /user/capabilities` answers `404`. The route arrived with upstream
+  `5995cab`, which [Dependencies](#dependencies) names. Checks 3 and 4 both rest
+  on `CapabilityGate`, so neither can be demonstrated there at all.
+- `api_keys.read_only` does not exist; it arrives in migration `0287`. A
+  read-only MCP key cannot be created, so check 4 has no subject.
+
+That turned up something worth having: an instance old enough to 404 that route
+exists in the wild, so the application's behaviour against one is now pinned by
+a test rather than assumed. `CapabilityGate` records the `404` and leaves every
+gate open, which means an older server is fully usable and the server's own
+`403` and field omission remain the backstop — the degradation this design
+already intended, now demonstrated against the case that provoked it.
+
+**Check 2 passes.** Driven through this package's own wrappers against that
+instance: purchase three, and stock goes 9 to 12; consume one, and it goes to
+11; undo the transaction, and it returns to 12. The booking's `transaction_id`
+is what undo is addressed to, and `spoiled` maps back from the wire's `0` to
+`false`. The reads were exercised at the same time and all decode from real
+rows — quantity units keeping `name_plural`, a location keeping its `path`,
+`row_created_timestamp` arriving as `"2026-09-19 14:30:23"` and parsing,
+prices visible at `17.91` for nine packs at `1.99`, and the below-minimum
+bucket reporting the shortfall. Both fixes above were found and made in the
+course of it.
+
+**Check 1 passes, and finding that out cost four defects.** Connect, quit,
+relaunch, and the window comes back already showing stock. It did not at first,
+and nothing about it was reachable by a test:
+
+- `KeychainCredentialStore` satisfied an `async` protocol requirement with a
+  synchronous body, so `SecItemCopyMatching` ran on whatever actor called —
+  the main one, via `VictualSession.restore()`. The Keychain can put an
+  authorisation dialog in front of the user, so the application launched, froze
+  before drawing its first window, and sat there windowless with the dialog
+  behind it. A sampled stack showed the main thread parked in the Security
+  framework underneath `restore()`.
+- The application could not save a key at all: the data-protection Keychain
+  wants an access group, which comes from a signing identity's team, and an
+  ad-hoc signed build has none. `Tests/VictualCoreTests` already documented this
+  about ad-hoc binaries; the application had not applied it, and
+  `Apps/Victual/README.md` claimed the opposite.
+- That failure was invisible, because the only view that renders
+  `credentialStoreError` is the connection form, which is replaced the moment
+  the connection succeeds.
+- `CommandGroup(replacing: .newItem) {}` removed the File menu, and `New Window`
+  with it — so closing the last window left the application running with no way
+  to open another.
+
+The first of those is a package defect and the rest are the application's.
+Together they are the argument for this plan's own existence: "a package whose
+seams have been proven by a real UI rather than by inspection."
+
+**Checks 3 and 4 remain impossible** on the 4.6.0 instance, for the reasons
+above: no capabilities route, no `read_only` column.
+
+The temporary product, its stock and the temporary API key were removed
+afterwards; the instance was left as it was found.

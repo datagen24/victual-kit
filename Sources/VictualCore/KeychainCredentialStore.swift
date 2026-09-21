@@ -97,7 +97,57 @@ public struct KeychainCredentialStore: VictualCredentialStore {
 
     // MARK: - VictualCredentialStore
 
-    public func apiKey(for server: VictualServer) throws -> VictualAPIKey? {
+    // Every one of these hops off the caller's actor before touching the
+    // Security framework.
+    //
+    // `SecItemCopyMatching` and friends are synchronous and can block for a
+    // long time: the Keychain may put an authorisation dialog in front of the
+    // user, and a change of code signature is enough to provoke one. Satisfying
+    // an `async` requirement with a synchronous body runs that call on whatever
+    // actor asked — which, for a SwiftUI app calling `VictualSession.restore()`
+    // at launch, is the main actor.
+    //
+    // Observed rather than theorised: it froze the main thread before the first
+    // window was drawn, so the application came up windowless and looked hung
+    // while a dialog waited behind it.
+    //
+    // The `…Synchronously` variants remain public for a caller that is already
+    // off the main actor and wants no hop.
+
+    public func apiKey(for server: VictualServer) async throws -> VictualAPIKey? {
+        try await offCallerActor { try self.apiKeySynchronously(for: server) }
+    }
+
+    public func save(_ apiKey: VictualAPIKey, for server: VictualServer) async throws {
+        try await offCallerActor { try self.saveSynchronously(apiKey, for: server) }
+    }
+
+    public func removeAPIKey(for server: VictualServer) async throws {
+        try await offCallerActor { try self.removeAPIKeySynchronously(for: server) }
+    }
+
+    public func savedServers() async throws -> [VictualServer] {
+        try await offCallerActor { try self.savedServersSynchronously() }
+    }
+
+    /// Removes every key this store wrote.
+    public func removeAll() async throws {
+        try await offCallerActor { try self.removeAllSynchronously() }
+    }
+
+    /// Runs `work` off whatever actor called, and waits for it.
+    ///
+    /// Detached rather than a plain `Task`, so it does not inherit the caller's
+    /// actor — inheriting it is exactly the bug this avoids.
+    private func offCallerActor<T: Sendable>(
+        _ work: @escaping @Sendable () throws -> T
+    ) async throws -> T {
+        try await Task.detached(priority: .userInitiated) { try work() }.value
+    }
+
+    // MARK: - Synchronous implementation
+
+    public func apiKeySynchronously(for server: VictualServer) throws -> VictualAPIKey? {
         var query = baseQuery()
         query[kSecAttrAccount as String] = account(for: server)
         query[kSecReturnData as String] = true
@@ -119,7 +169,7 @@ public struct KeychainCredentialStore: VictualCredentialStore {
         }
     }
 
-    public func save(_ apiKey: VictualAPIKey, for server: VictualServer) throws {
+    public func saveSynchronously(_ apiKey: VictualAPIKey, for server: VictualServer) throws {
         let value = Data(apiKey.rawValue.utf8)
 
         var query = baseQuery()
@@ -151,7 +201,7 @@ public struct KeychainCredentialStore: VictualCredentialStore {
         }
     }
 
-    public func removeAPIKey(for server: VictualServer) throws {
+    public func removeAPIKeySynchronously(for server: VictualServer) throws {
         var query = baseQuery()
         query[kSecAttrAccount as String] = account(for: server)
 
@@ -161,7 +211,7 @@ public struct KeychainCredentialStore: VictualCredentialStore {
         }
     }
 
-    public func savedServers() throws -> [VictualServer] {
+    public func savedServersSynchronously() throws -> [VictualServer] {
         try storedAttributes()
             .compactMap(server(fromAttributes:))
             .sorted { $0.baseURL.absoluteString < $1.baseURL.absoluteString }
@@ -171,7 +221,7 @@ public struct KeychainCredentialStore: VictualCredentialStore {
     ///
     /// Scoped to ``Configuration/service`` and the access group, so it cannot
     /// reach another app's items.
-    public func removeAll() throws {
+    public func removeAllSynchronously() throws {
         // Deleting account by account rather than with one broad query: against
         // the file-based Keychain on macOS, a `SecItemDelete` that matches
         // several items removes only one of them and still reports success.

@@ -93,7 +93,7 @@ struct GeneratedSpecTests {
         let json = Data(
             """
             {"product_id": 7, "amount": 2.5, "amount_aggregated": 4.0,
-             "best_before_date": "2026-01-31", "is_aggregated_amount": false}
+             "best_before_date": "2026-01-31", "is_aggregated_amount": 0}
             """.utf8
         )
 
@@ -102,6 +102,50 @@ struct GeneratedSpecTests {
         #expect(stock.productId == 7)
         #expect(stock.amountAggregated == 4.0)
         #expect(stock.bestBeforeDate == "2026-01-31")
-        #expect(stock.isAggregatedAmount == false)
+        #expect(stock.isAggregatedAmount == 0)
+    }
+
+    /// The 0/1 flags the document calls `boolean` and the server sends as
+    /// numbers, retyped by `Scripts/update-openapi.py`.
+    ///
+    /// Confirmed against a live instance: without this, a `0` where `true` was
+    /// promised fails the whole response, so all five bookings throw *after* the
+    /// booking has already been written. `VictualCore` maps these back to `Bool`
+    /// at its own boundary.
+    @Test("Integer flags the document mistyped as boolean decode as numbers")
+    func integerFlagsRetyped() throws {
+        let booking = Data(#"[{"id": 1, "spoiled": 0, "transaction_id": "tx"}]"#.utf8)
+        let rows = try decoder.decode([Components.Schemas.StockLogEntry].self, from: booking)
+        #expect(rows.first?.spoiled == 0)
+
+        let spoiledRow = Data(#"[{"id": 2, "spoiled": 1}]"#.utf8)
+        #expect(
+            try decoder.decode([Components.Schemas.StockLogEntry].self, from: spoiledRow)
+                .first?.spoiled == 1
+        )
+    }
+
+    /// The control for the repair above: a field that really is a boolean
+    /// server-side stays one, so the retyping stayed surgical.
+    ///
+    /// `ProductDetailsResponse.has_childs` reaches the wire through `boolval()`,
+    /// and `CurrentUserCapabilities.read_only` through a PHP comparison. Neither
+    /// is a raw column, and neither is listed for repair.
+    @Test("Fields that really are boolean were left alone")
+    func genuineBooleansUntouched() throws {
+        let detail = Data(#"{"has_childs": true, "stock_amount": 2}"#.utf8)
+        let decoded = try decoder.decode(
+            Components.Schemas.ProductDetailsResponse.self, from: detail
+        )
+        #expect(decoded.hasChilds == true)
+
+        let capabilities = Data(
+            #"{"key_type": "mcp", "read_only": true, "permissions": []}"#.utf8
+        )
+        #expect(
+            try decoder.decode(
+                Components.Schemas.CurrentUserCapabilities.self, from: capabilities
+            ).readOnly == true
+        )
     }
 }

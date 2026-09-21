@@ -96,10 +96,26 @@ let response = try await client.underlying.getStockProductsByProductId(
 let details = try response.ok.body.json
 ```
 
-`VictualCore` deliberately does not wrap all 145 operations. The convenience
-methods in `VictualClient+Convenience.swift` exist to cover the connection flow
-and to demonstrate the pattern — generated call in, `VictualError` out. Add more
-the same way as a front end needs them.
+`VictualCore` deliberately does not wrap all 145 operations. What is wrapped is
+the connection flow (`VictualClient+Convenience.swift`), the stock reads
+(`VictualClient+Stock.swift`), the five bookings and undo
+(`VictualClient+Bookings.swift`), and the entity listings a stock list cannot
+render without (`VictualClient+Objects.swift`). Add more the same way as a front
+end needs them: generated call in, `VictualError` out, a hand-written type across
+the boundary.
+
+Three rules are applied once, at that boundary, rather than at every call site:
+
+- **Price-bearing fields are read by presence.** `value`, `price`, `last_price`,
+  `avg_price` and `stock_value` are absent from the response — not null — for a
+  caller without `STOCK_PRICES_VIEW`. They stay optional and are never defaulted
+  to zero. For the same reason the wrappers expose neither `query[]` nor `order`:
+  naming a price field in either is answered `400` rather than applied.
+- **Dates are parsed leniently.** Victual renders `format: date-time` fields the
+  way its database stores them (`"2019-05-03 18:24:04"`), which a strict ISO 8601
+  reader rejects. `VictualDates` installs a transcoder that reads both, and does
+  the same for the `" 00:00:00"` suffix ADR-0005 documents on day fields.
+- **`integer` 0/1 flags become `Bool`.**
 
 ### Errors
 

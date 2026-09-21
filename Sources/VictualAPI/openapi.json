@@ -10658,8 +10658,8 @@
 						"format": "date"
 					},
 					"spoiled": {
-						"type": "boolean",
-						"default": false
+						"type": "integer",
+						"default": 0
 					},
 					"stock_id": {
 						"type": "string"
@@ -10748,8 +10748,8 @@
 						"type": "string"
 					},
 					"spoiled": {
-						"type": "boolean",
-						"default": false
+						"type": "integer",
+						"default": 0
 					},
 					"transaction_type": {
 						"$ref": "#/components/schemas/StockTransactionType"
@@ -10893,7 +10893,7 @@
 						"description": "The next due date for this product"
 					},
 					"is_aggregated_amount": {
-						"type": "boolean",
+						"type": "integer",
 						"description": "Indicates wheter this product has sub-products or not / if the fields `amount_aggregated` and `amount_opened_aggregated` are filled"
 					},
 					"product": {

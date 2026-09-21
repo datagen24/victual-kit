@@ -11,7 +11,9 @@ import VictualAPI
 /// written in the shape the rest of the package expects: ``VictualError`` on
 /// failure, plain Swift values on success.
 ///
-/// Use these as the pattern when you add more.
+/// Use these as the pattern when you add more. The stock reads and the five
+/// bookings follow it, in `VictualClient+Stock.swift` and
+/// `VictualClient+Bookings.swift`.
 extension VictualClient {
     /// Version and runtime information about the instance.
     public func systemInfo() async throws(VictualError) -> SystemInformation {
@@ -35,23 +37,6 @@ extension VictualClient {
         }
     }
 
-    /// Products currently in stock, with the next due date for each.
-    ///
-    /// Requires the `STOCK_VIEW` permission.
-    public func currentStock() async throws(VictualError) -> [Components.Schemas.CurrentStockResponse] {
-        try await perform {
-            try await underlying.getCurrentStock(.init())
-        } unwrap: { output in
-            switch output {
-            case .ok(let response):
-                return try response.body.json
-            case .unauthorized:
-                throw VictualError.unauthorized
-            case .undocumented(let statusCode, _):
-                throw VictualError.forStatus(statusCode)
-            }
-        }
-    }
 
     /// Performs the cheapest authenticated round trip, to confirm the address
     /// really is a Victual instance and the key is accepted.
@@ -69,7 +54,11 @@ extension VictualClient {
     /// failures, and the generated `.ok` / `.json` accessors throw when the
     /// response was a different case than expected. Both funnel through
     /// ``VictualError/mapping(_:)`` here so callers only ever see one error type.
-    private func perform<Output, Value>(
+    ///
+    /// Internal rather than private so the wrappers in `VictualClient+Stock.swift`
+    /// and `VictualClient+Bookings.swift` share it; it stays out of the package's
+    /// public surface because its `Output` is always a generated type.
+    func perform<Output, Value>(
         _ call: () async throws -> Output,
         unwrap: (Output) throws -> Value
     ) async throws(VictualError) -> Value {
