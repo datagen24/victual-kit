@@ -54,3 +54,16 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+# Declared explicitly rather than left to Xcode's autocreation: CI generates
+# this project and builds it without ever opening Xcode, so a scheme that only
+# exists once a person has opened the project is not a scheme CI can use.
+schemes:
+  Victual:
+    build:
+      targets:
+        Victual: all
+    run:
+      config: Debug
+    archive:
+      config: Release
