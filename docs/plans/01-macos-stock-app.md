@@ -379,13 +379,35 @@ prices visible at `17.91` for nine packs at `1.99`, and the below-minimum
 bucket reporting the shortfall. Both fixes above were found and made in the
 course of it.
 
-**Check 1 — Keychain restore — is still undone.** It needs the key typed into
-the connection form, and that field is a `SecureField`; background automation
-cannot type into a password field, so finishing it means taking over the
-screen. Nothing about the code is suspected: `VictualSession.restore()` is
-covered by `Tests/VictualUITests`, and what remains untested is specifically
-the data-protection Keychain against a signed bundle, which no unit test
-reaches.
+**Check 1 passes, and finding that out cost four defects.** Connect, quit,
+relaunch, and the window comes back already showing stock. It did not at first,
+and nothing about it was reachable by a test:
+
+- `KeychainCredentialStore` satisfied an `async` protocol requirement with a
+  synchronous body, so `SecItemCopyMatching` ran on whatever actor called —
+  the main one, via `VictualSession.restore()`. The Keychain can put an
+  authorisation dialog in front of the user, so the application launched, froze
+  before drawing its first window, and sat there windowless with the dialog
+  behind it. A sampled stack showed the main thread parked in the Security
+  framework underneath `restore()`.
+- The application could not save a key at all: the data-protection Keychain
+  wants an access group, which comes from a signing identity's team, and an
+  ad-hoc signed build has none. `Tests/VictualCoreTests` already documented this
+  about ad-hoc binaries; the application had not applied it, and
+  `Apps/Victual/README.md` claimed the opposite.
+- That failure was invisible, because the only view that renders
+  `credentialStoreError` is the connection form, which is replaced the moment
+  the connection succeeds.
+- `CommandGroup(replacing: .newItem) {}` removed the File menu, and `New Window`
+  with it — so closing the last window left the application running with no way
+  to open another.
+
+The first of those is a package defect and the rest are the application's.
+Together they are the argument for this plan's own existence: "a package whose
+seams have been proven by a real UI rather than by inspection."
+
+**Checks 3 and 4 remain impossible** on the 4.6.0 instance, for the reasons
+above: no capabilities route, no `read_only` column.
 
 The temporary product, its stock and the temporary API key were removed
 afterwards; the instance was left as it was found.

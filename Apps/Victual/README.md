@@ -37,8 +37,18 @@ CI does the same thing on every pull request, in the `app` job.
 ## Signing
 
 `CODE_SIGN_IDENTITY` is `-`, so it builds and runs ad-hoc signed with no developer
-account. That is enough for the data-protection Keychain to work locally. A distribution
-identity is plan 01's open question 1 and is not answered yet.
+account. A distribution identity is plan 01's open question 1 and is not answered yet.
+
+That has one consequence worth knowing. The **data-protection Keychain is off**, because
+it requires an access group that comes from a signing identity's team and an ad-hoc build
+has none: with it on, every save is refused with `errSecMissingEntitlement`, nothing is
+remembered, and the next launch asks for the key again. The application uses the
+file-based Keychain instead — see `VictualApp.credentialStore`, which says to turn it back
+on once there is a real identity.
+
+A side effect during development: each rebuild changes the ad-hoc signature, so macOS asks
+once per build whether the new binary may read the item it saved. A shipped build has a
+stable signature and asks once.
 
 CI builds with `CODE_SIGNING_ALLOWED=NO`, which is enough to find a compile error and not
 enough to exercise the Keychain — that path is verified on a developer machine.
