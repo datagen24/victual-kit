@@ -76,7 +76,8 @@ private struct MainTabs: View {
         .alert(
             "That did not work",
             isPresented: Binding(
-                get: { workspace.bookings.error != nil },
+                // While a booking form is up, the form reports its own errors.
+                get: { workspace.bookings.error != nil && workspace.presentedBooking == nil },
                 set: { if !$0 { workspace.bookings.clearError() } }
             )
         ) {

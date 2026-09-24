@@ -99,6 +99,19 @@ struct BookingForm: View {
         }
         .presentationDetents([.medium, .large])
         .interactiveDismissDisabled(isCommitting)
+        // Shown here rather than by the tabs: a presenter with this sheet up
+        // cannot show an alert of its own.
+        .alert(
+            "That did not work",
+            isPresented: Binding(
+                get: { workspace.bookings.error != nil },
+                set: { if !$0 { workspace.bookings.clearError() } }
+            )
+        ) {
+            Button("OK", role: .cancel) { workspace.bookings.clearError() }
+        } message: {
+            Text(workspace.bookings.error?.errorDescription ?? "")
+        }
     }
 
     @ViewBuilder
@@ -130,12 +143,17 @@ struct BookingForm: View {
         }
     }
 
+    /// Sends the booking, closing the form only if it worked. A refusal keeps
+    /// the draft on screen so it can be corrected rather than retyped.
     private func commit() {
         isCommitting = true
         let request = draft.request
         Task {
-            await workspace.perform(request)
-            dismiss()
+            if await workspace.perform(request) {
+                dismiss()
+            } else {
+                isCommitting = false
+            }
         }
     }
 }
