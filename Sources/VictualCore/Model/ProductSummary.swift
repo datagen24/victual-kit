@@ -112,10 +112,9 @@ extension ProductSummary {
     /// Maps the shape `GET /stock/products/{id}` returns, which is the same
     /// columns with userfields attached.
     init?(_ schema: Components.Schemas.Product) {
-        guard let id = schema.id else { return nil }
         self.init(
-            id: id,
-            name: schema.name ?? "",
+            id: schema.id,
+            name: schema.name,
             details: schema.description,
             locationID: schema.locationId,
             shoppingLocationID: schema.shoppingLocationId,

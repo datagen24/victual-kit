@@ -25,6 +25,10 @@ consumer, and how its seams get proven. See
 [its README](Apps/Victual/README.md) and
 [docs/plans/01-macos-stock-app.md](docs/plans/01-macos-stock-app.md).
 
+`Apps/VictualPhone` is the iPhone application: the same stores, plus barcode and label
+scanning. See [its README](Apps/VictualPhone/README.md) and
+[docs/plans/02-iphone-scanning-app.md](docs/plans/02-iphone-scanning-app.md).
+
 ## Requirements
 
 Swift 6.0, and macOS 14 / iOS 17 / iPadOS 17 / tvOS 17 / watchOS 10 / visionOS 1.
@@ -98,7 +102,7 @@ let details = try response.ok.body.json
 
 `VictualCore` deliberately does not wrap all 145 operations. What is wrapped is
 the connection flow (`VictualClient+Convenience.swift`), the stock reads
-(`VictualClient+Stock.swift`), the five bookings and undo
+(`VictualClient+Stock.swift`), scan resolution (`VictualClient+Scanning.swift`), the five bookings and undo
 (`VictualClient+Bookings.swift`), and the entity listings a stock list cannot
 render without (`VictualClient+Objects.swift`). Add more the same way as a front
 end needs them: generated call in, `VictualError` out, a hand-written type across
@@ -111,10 +115,17 @@ Three rules are applied once, at that boundary, rather than at every call site:
   caller without `STOCK_PRICES_VIEW`. They stay optional and are never defaulted
   to zero. For the same reason the wrappers expose neither `query[]` nor `order`:
   naming a price field in either is answered `400` rather than applied.
-- **Dates are parsed leniently.** Victual renders `format: date-time` fields the
-  way its database stores them (`"2019-05-03 18:24:04"`), which a strict ISO 8601
-  reader rejects. `VictualDates` installs a transcoder that reads both, and does
-  the same for the `" 00:00:00"` suffix ADR-0005 documents on day fields.
+- **Dates are parsed leniently.** Victual renders timestamps the way its
+  database stores them (`"2019-05-03 18:24:04"`), which a strict ISO 8601 reader
+  rejects. Since upstream ADR-0027 the specification types them as plain
+  strings; `VictualDates.timestamp(_:)` reads that rendering, ISO 8601, and the
+  PostgreSQL `TIMESTAMPTZ` form label fields such as `retired_at` use. The same
+  lenience covers the `" 00:00:00"` suffix ADR-0005 documents on day fields.
+- **Timestamps are read in the instance's time zone.** A timestamp without an
+  offset is the server's local time, so `verifyConnection()` learns the zone
+  from `GET /system/time` and every copy of the client reads such timestamps in
+  it. One that states an offset keeps it. Calendar days (`best_before_date`)
+  are not instants and stay in the device's zone.
 - **`integer` 0/1 flags become `Bool`.**
 
 ### Errors
@@ -204,7 +215,7 @@ change surfaces as a failing job rather than as drift.
 Victual's document is generated from Slim/PHP routes and did not load in
 swift-openapi-generator as published.
 
-As of upstream commit `5995cab` only repair 2 and repair 6 still do anything —
+As of upstream commit `e004850` only repair 2 and repair 6 still do anything —
 the sync report in `openapi/spec-lock.json` shows `pathsRewritten`,
 `danglingRefsRepaired`, `nullableKeywordsConverted` and
 `compositionConflictsResolved` all at zero, because upstream now publishes those
@@ -240,13 +251,13 @@ guard against a regression tomorrow, and it costs nothing to leave standing.
 
 ### Known upstream issues left in place
 
-These change what the API *says* it returns, so repairing them would mean
-guessing at the contract. They are recorded in `openapi/spec-lock.json` under
-`upstreamIssuesLeftInPlace` and are worth reporting upstream:
+None as of upstream commit `e004850`. Any that appear are recorded in
+`openapi/spec-lock.json` under `upstreamIssuesLeftInPlace` and are worth
+reporting upstream: they change what the API *says* it returns, so repairing
+them here would mean guessing at the contract.
 
-- `GET /user` types its 200 response as `{"type": "object", "items": {"$ref":
-  ".../UserDto"}}`. `items` is meaningless on an object, so the response
-  generates as a free-form `OpenAPIObjectContainer` instead of `UserDto`.
+`GET /user`, the last one, was fixed upstream: its 200 response used to carry
+`items` on an `object` and generated as a free-form container.
 
 ## Development
 
@@ -255,6 +266,7 @@ Scripts/build.sh test                  # swift test, with the generated-code noi
 Scripts/verify-platforms.sh            # build every product for every supported platform
 Scripts/update-openapi.py              # re-sync the specification
 cd Apps/Victual && xcodegen generate   # regenerate the macOS application's project
+cd Apps/VictualPhone && xcodegen generate   # and the iPhone application's
 ```
 
 Design records live in [docs/plans/](docs/plans/README.md). Architectural decisions do

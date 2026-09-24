@@ -186,8 +186,8 @@ struct StockStoreTests {
     func locationValueNeedsEveryPrice() async {
         var table = populated
         table.locationEntries = """
-            [{"id": 1, "product_id": 7, "amount": 2, "price": 1.5, "open": 0},
-             {"id": 2, "product_id": 7, "amount": 1, "open": 0}]
+            [{"id": 1, "stock_id": "a", "product_id": 7, "amount": 2, "price": 1.5, "open": 0},
+             {"id": 2, "stock_id": "b", "product_id": 7, "amount": 1, "open": 0}]
             """
         let (client, _) = testClient(table)
         let store = StockStore(client: client)

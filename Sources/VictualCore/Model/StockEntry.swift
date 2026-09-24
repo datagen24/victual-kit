@@ -92,9 +92,8 @@ public struct StockEntry: Hashable, Sendable, Identifiable {
 
 extension StockEntry {
     init?(_ schema: Components.Schemas.StockEntry) {
-        guard let id = schema.id else { return nil }
         self.init(
-            id: id,
+            id: schema.id,
             stockID: schema.stockId,
             productID: schema.productId,
             locationID: schema.locationId,
@@ -109,8 +108,8 @@ extension StockEntry {
             openedAmount: schema.openedAmount,
             openedQuantityUnitID: schema.openedQuId,
             openedTare: schema.openedTare,
-            openedMeasuredAt: schema.openedMeasuredAt,
-            createdAt: schema.rowCreatedTimestamp
+            openedMeasuredAt: VictualDates.timestamp(schema.openedMeasuredAt),
+            createdAt: VictualDates.timestamp(schema.rowCreatedTimestamp)
         )
     }
 }

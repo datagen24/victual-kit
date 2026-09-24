@@ -154,7 +154,11 @@ extension VictualClient {
             throw VictualError.transportFailed(underlying: error)
         }
         do {
-            return try Self.objectDecoder.decode([Row].self, from: data)
+            // Bound for the same reason ``perform(_:unwrap:)`` binds it: the
+            // decoder's date strategy reads zone-less timestamps in it.
+            return try VictualDates.$serverTimeZone.withValue(clock.timeZone) {
+                try Self.objectDecoder.decode([Row].self, from: data)
+            }
         } catch {
             throw VictualError.decodingFailed(underlying: error)
         }

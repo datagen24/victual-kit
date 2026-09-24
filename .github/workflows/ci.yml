@@ -98,6 +98,34 @@ jobs:
             -quiet \
             build
 
+  phone:
+    name: Build the iPhone application
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # See the test job.
+          persist-credentials: false
+      - name: XcodeGen
+        run: brew install xcodegen
+      - name: Generate the project
+        working-directory: Apps/VictualPhone
+        run: xcodegen generate
+      # A simulator build needs no signing identity. The live scanner cannot
+      # run in a simulator at all; it is verified on a phone. See
+      # docs/plans/02-iphone-scanning-app.md, verification item 4.
+      - name: Build
+        working-directory: Apps/VictualPhone
+        run: |
+          xcodebuild -project VictualPhone.xcodeproj \
+            -scheme VictualPhone \
+            -destination "generic/platform=iOS Simulator" \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            -quiet \
+            build
+
   spec-drift:
     name: OpenAPI specification drift
     runs-on: ubuntu-latest
