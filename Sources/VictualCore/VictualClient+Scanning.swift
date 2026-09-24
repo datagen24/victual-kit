@@ -121,10 +121,7 @@ extension VictualClient {
         } unwrap: { output in
             switch output {
             case .ok(let response):
-                guard let entry = StockEntry(try response.body.json) else {
-                    throw VictualError.notFound
-                }
-                return entry
+                return StockEntry(try response.body.json)
             case .badRequest(let response):
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized:

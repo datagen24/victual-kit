@@ -91,7 +91,7 @@ extension StockSummary {
             nextDueDate: VictualDates.day(schema.bestBeforeDate),
             // Another `integer` 0/1 the document called `boolean`; the server
             // assigns it as a bare number. Repaired in the spec normalizer.
-            isAggregatedAmount: .fromWireFlag(schema.isAggregatedAmount),
+            isAggregatedAmount: schema.isAggregatedAmount ?? false,
             product: schema.product.flatMap(ProductSummary.init)
         )
     }

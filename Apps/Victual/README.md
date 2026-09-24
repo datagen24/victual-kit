@@ -8,7 +8,7 @@ It connects to an instance, restores from the Keychain, and shows a household's 
 sidebar of the server's status buckets and the locations tree, a table of stock, a product
 inspector, and the five bookings with undo.
 
-Two behaviours are deliberate and easy to "fix" wrongly:
+Two behaviours are deliberate, and changing either one would be a regression:
 
 - **Booking commands are disabled, not hidden**, when the key's owner lacks the permission,
   and the tooltip names it. A household member should be able to see that consume exists
@@ -20,8 +20,9 @@ Two behaviours are deliberate and easy to "fix" wrongly:
 ## Version
 
 `0.1.0-MVP`, following Victual's own scheme — the server's `version.json` reads
-`0.1.1-MVP` — so the application and the instance it talks to read as one
-project. The suffix is a release stage, **Minimum Viable Product**: the five
+`0.2.0-MVP` — so the application and the instance it talks to read as one
+project. The application needs a server at 0.2.0-MVP or later; see the
+[package requirements](../../Sources/README.md#requirements). The suffix is a release stage, **Minimum Viable Product**: the five
 bookings and the stock a household reads daily, and deliberately nothing else
 (see plan 01's [Scope](../../docs/plans/01-macos-stock-app.md#scope)).
 

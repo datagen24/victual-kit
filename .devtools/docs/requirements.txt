@@ -1,0 +1,4 @@
+# Pinned so a documentation build is reproducible, and to the same versions the Victual
+# server's site builds with.
+mkdocs==1.6.1
+mkdocs-material==9.7.7

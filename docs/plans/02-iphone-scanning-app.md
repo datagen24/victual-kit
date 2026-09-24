@@ -38,10 +38,17 @@ the prefix, then call the right endpoint" — is already a parse. So
 A label answer wins, following ADR-0011 item 2's order. The cost is a second request per
 scan, sent in parallel, so latency is one round trip.
 
-Outcomes are a `ScanResolution`: a product; one specific lot (a per-unit label); a location;
-a label on something this app has no screen for (a recipe, a chore, a battery, or a kind
-newer than the package); a retired label with what it used to be on; or unknown. None of
-them is an error. Unknown is the ordinary answer for a new package.
+Outcomes are a `ScanResolution`, one of six:
+
+- a product;
+- one specific lot (a per-unit label);
+- a location;
+- a label on something this app has no screen for (a recipe, a chore, a battery, or a kind
+  newer than the package);
+- a retired label with what it used to be on;
+- unknown.
+
+None of them is an error. Unknown is the ordinary answer for a new package.
 
 ### What the specification does not say
 

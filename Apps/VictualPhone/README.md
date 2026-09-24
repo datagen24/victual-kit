@@ -8,7 +8,7 @@ Three tabs. **Scan** opens first: a live camera scanner, with a photo picker and
 typed-code field as the other two ways in. **Stock** is the list, filtered by the server's
 status buckets. **Settings** is the connection.
 
-Behaviours that are deliberate and easy to "fix" wrongly:
+Behaviours that are deliberate, where changing one would be a regression:
 
 - **"Use one" and "Open one" book without a form.** One tap is the point of scanning the
   thing in your hand. The undo bar is the safety net; everything needing an amount, a date

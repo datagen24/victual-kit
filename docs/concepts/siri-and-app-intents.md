@@ -17,10 +17,10 @@ a product, and tap a stepper. She will say a sentence while her hands are wet, o
 standing in front of an open fridge, or in a shop. If that sentence does not work the first
 time, she will not say it a second time.
 
-That framing is the whole design constraint. It rules out a long intent catalogue, it rules
-out anything that asks a follow-up question it could have answered itself, and it makes
-silent failure the worst possible outcome — worse than refusing outright, because a shopping
-list that silently did not get the milk is a shopping list she stops trusting.
+That framing is the whole design constraint. It rules out a long intent catalogue, and
+anything that asks a follow-up question it could have answered itself. It also makes silent
+failure the worst possible outcome — worse than refusing outright, because a shopping list
+that silently did not get the milk is a shopping list she stops trusting.
 
 ## 2. Framework choice
 
@@ -63,7 +63,7 @@ struct PantryAppPackage: AppIntentsPackage {
 
 **Risk, unverified:** Apple documents this in terms of a *framework*. Whether extraction is
 reliable from a SwiftPM **static** library target in the current toolchain is the one thing
-in this concept I have not confirmed, and it is load-bearing for the module split above.
+in this concept I have not confirmed, and the module split in section 3 depends on it.
 
 **Mitigation:** on day one, declare one trivial intent directly in the app target and confirm
 it appears in the Shortcuts app. Then move it to `VictualIntents` and confirm it *still*
@@ -312,9 +312,10 @@ are a mitigation, not a fix, and betting the app's primary interaction on them i
 
 It is not a rebrand — *vittles* is an accepted phonetic spelling of the same word, and the
 one English actually kept. It is spelled the way it is said, so recognition and read-back
-both work with no plist keys and no bug reports. It is warm and domestic in a way "Victual"
-is not, which suits a shared household pantry far better than a Latinate server name does.
-And it keeps the server/client naming honest: the server is Victual, the thing in her hand
+both work with no plist keys and no bug reports.
+
+It is warm and domestic in a way "Victual" is not, which suits a shared household pantry
+far better than a Latinate server name does. And it keeps the server/client naming honest: the server is Victual, the thing in her hand
 is Vittles, and the relationship between the two words is the joke rather than the bug.
 
 Set `CFBundleSpokenName` anyway, and register "Victual" as an `INAlternativeAppName` with the

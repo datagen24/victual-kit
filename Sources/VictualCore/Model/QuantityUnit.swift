@@ -46,7 +46,7 @@ public struct QuantityUnit: Hashable, Sendable, Identifiable, Codable {
 }
 
 extension QuantityUnit {
-    init?(_ schema: Components.Schemas.QuantityUnit) {
+    init(_ schema: Components.Schemas.QuantityUnit) {
         self.init(
             id: schema.id,
             name: schema.name,

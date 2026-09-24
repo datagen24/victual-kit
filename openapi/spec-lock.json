@@ -4,8 +4,8 @@
   "upstreamPath": "victual.openapi.json",
   "upstreamCommit": "38445d4f84c2c88c8ed8af622982340639a918d2",
   "upstreamSha256": "d37bb3ffc1948292a5498c809b11bd9eb53d0191e9479da7e7900a6f56193ce2",
-  "generatedSha256": "3c71503c284cbd1b45110ef306a7e1e1b7e1c70305f8d221699c99b5bc75600b",
-  "syncedAt": "2026-09-24T20:10:47Z",
+  "generatedSha256": "ee9ac83887557c0b9e1ae1a54f87102c336f3e7b32a6809f861fabe149159d48",
+  "syncedAt": "2026-09-24T21:21:18Z",
   "normalizations": {
     "pathsRewritten": 0,
     "operationIdsAssigned": 145,
@@ -13,10 +13,7 @@
     "nullableKeywordsConverted": 0,
     "compositionConflictsResolved": 0,
     "danglingRefsRepaired": [],
-    "integerFlagsRetyped": [
-      "StockLogEntry.spoiled",
-      "CurrentStockResponse.is_aggregated_amount"
-    ],
+    "integerFlagsRetyped": [],
     "serverPlaceholderReplaced": true,
     "upstreamIssuesLeftInPlace": []
   }

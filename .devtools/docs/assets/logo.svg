@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 100" role="img" aria-labelledby="title desc">
+  <title id="title">Victual</title>
+  <desc id="desc">Victual wordmark with a V-shaped bowl holding provisions.</desc>
+
+  <!-- Explanatory full-size mark: the provisions are omitted from icon.svg. -->
+  <g transform="translate(3 5)">
+    <path fill="#F2E7D3" d="M32 27h25v29H32z"/>
+    <path fill="#C85A3D" d="M31 25h27a4 4 0 0 1 4 4v2H27v-2a4 4 0 0 1 4-4Z"/>
+    <path fill="#E7A93F" d="M20 50c-8-6-8-14-4-21 8 3 11 10 8 19l-4 2Zm7 5c-7-5-7-12-3-18 7 3 9 9 6 17l-3 1Z"/>
+    <path fill="none" stroke="#174B3A" stroke-width="2.6" stroke-linecap="round" d="M24 63 19 43"/>
+    <path fill="#174B3A" d="M56 54c5-13 16-15 23-8-2 11-9 17-22 16l-1-8Z"/>
+    <circle cx="43" cy="57" r="11" fill="#C85A3D"/>
+    <path fill="#174B3A" d="m43 43 2 6 6-2-4 5 5 3-7-1-2 7-2-7-7 1 5-3-4-5 6 2 2-6Z"/>
+    <path fill="#174B3A" d="M8 47c5 8 14 12 27 14l11 39C24 97 11 79 8 47Z"/>
+    <path fill="#174B3A" d="M82 47c-5 8-14 12-27 14l-9 39c20-4 33-21 36-53Z"/>
+    <rect x="28" y="101" width="36" height="5" rx="2.5" fill="#174B3A"/>
+  </g>
+
+  <!-- Custom stroke-built wordmark: no external font dependency. -->
+  <g fill="none" stroke="#174B3A" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M92 29 106 73 120 29"/>
+    <path d="M131 44v29"/>
+    <path d="M159 49c-3-4-7-6-11-6-8 0-12 6-12 15s4 15 12 15c4 0 8-2 11-6"/>
+    <path d="M170 31v33c0 6 3 9 9 9"/>
+    <path d="M165 45h15"/>
+    <path d="M188 44v17c0 8 4 12 10 12 7 0 11-5 11-13V44m0 0v29"/>
+    <path d="M232 46c-3-2-6-3-9-3-7 0-11 6-11 15s4 15 11 15c4 0 7-2 9-5V46Zm0 0v27"/>
+    <path d="M244 28v45"/>
+  </g>
+  <circle cx="131" cy="32" r="4.5" fill="#C85A3D"/>
+</svg>

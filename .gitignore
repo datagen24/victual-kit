@@ -17,3 +17,8 @@ DerivedData/
 ## Tooling
 *.pyc
 __pycache__/
+
+## Documentation tooling
+.devtools/vale/.bin/
+.docs-build/
+site/

@@ -45,7 +45,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.victual.Victual
         PRODUCT_NAME: Victual
-        # Follows Victual's own scheme (its version.json reads "0.1.1-MVP"),
+        # Follows Victual's own scheme (its version.json reads "0.2.0-MVP"),
         # so an application and the server it talks to are legible as the same
         # project at a glance. The suffix is a release stage -- Minimum Viable
         # Product. CFBundleVersion below stays a plain integer, which is the one

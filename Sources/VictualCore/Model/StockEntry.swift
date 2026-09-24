@@ -91,7 +91,7 @@ public struct StockEntry: Hashable, Sendable, Identifiable {
 }
 
 extension StockEntry {
-    init?(_ schema: Components.Schemas.StockEntry) {
+    init(_ schema: Components.Schemas.StockEntry) {
         self.init(
             id: schema.id,
             stockID: schema.stockId,

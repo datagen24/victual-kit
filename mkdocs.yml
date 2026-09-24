@@ -1,0 +1,75 @@
+# VictualKit documentation site.
+#
+# docs_dir is a staging tree assembled by .devtools/docs/stage.py, not a directory in
+# this repository: the pages are READMEs that sit beside the code they describe. Run the
+# staging script before mkdocs. See .devtools/docs/README.md.
+site_name: VictualKit
+site_description: The Swift package and Apple applications for Victual, a self-hosted groceries and household management server.
+site_url: https://victual-kit.readthedocs.io/
+repo_url: https://github.com/datagen24/victual-kit
+repo_name: datagen24/victual-kit
+edit_uri: ""
+copyright: BSD 3-Clause. The vendored OpenAPI document carries Victual's terms.
+
+docs_dir: .docs-build
+
+theme:
+  name: material
+  logo: assets/icon.svg
+  favicon: assets/icon-32.png
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra_css:
+  - assets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+# A page that is not in the nav, or a link that does not resolve, fails the build under
+# --strict, which is how CI and Read the Docs both build it.
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - Swift package:
+      - Guide: package/index.md
+      - Tracking the specification: package/openapi.md
+  - Applications:
+      - Victual for macOS: apps/macos.md
+      - Victual for iPhone: apps/iphone.md
+  - Development:
+      - Overview: development/index.md
+      - Prose checks: development/prose.md
+      - Documentation site: development/docs-site.md

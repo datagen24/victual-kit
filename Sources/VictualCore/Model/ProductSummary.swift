@@ -111,7 +111,7 @@ extension ProductSummary {
 
     /// Maps the shape `GET /stock/products/{id}` returns, which is the same
     /// columns with userfields attached.
-    init?(_ schema: Components.Schemas.Product) {
+    init(_ schema: Components.Schemas.Product) {
         self.init(
             id: schema.id,
             name: schema.name,

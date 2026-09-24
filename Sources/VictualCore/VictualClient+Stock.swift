@@ -111,7 +111,7 @@ extension VictualClient {
         } unwrap: { output in
             switch output {
             case .ok(let response):
-                return try response.body.json.compactMap(StockEntry.init)
+                return try response.body.json.map(StockEntry.init)
             case .badRequest(let response):
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized:
@@ -136,7 +136,7 @@ extension VictualClient {
         } unwrap: { output in
             switch output {
             case .ok(let response):
-                return try response.body.json.compactMap(StockEntry.init)
+                return try response.body.json.map(StockEntry.init)
             case .badRequest(let response):
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized:

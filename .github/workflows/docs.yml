@@ -1,0 +1,28 @@
+name: docs
+
+# Builds the documentation site the way Read the Docs does, so a broken link or a page
+# missing from the nav fails the pull request rather than the published build.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pinned MkDocs
+        run: pip install -r .devtools/docs/requirements.txt
+      - name: Stage the site
+        run: python3 .devtools/docs/stage.py
+      - name: Build strictly
+        run: mkdocs build --strict

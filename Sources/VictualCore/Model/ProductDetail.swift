@@ -103,7 +103,7 @@ extension ProductDetail {
     /// Fails when the response carried no usable product, which is the only part
     /// of it the rest is about.
     init?(_ schema: Components.Schemas.ProductDetailsResponse) {
-        guard let product = schema.product.flatMap(ProductSummary.init) else { return nil }
+        guard let product = schema.product.map(ProductSummary.init) else { return nil }
         self.init(
             product: product,
             stockAmount: schema.stockAmount ?? 0,
@@ -117,12 +117,12 @@ extension ProductDetail {
             nextDueDate: VictualDates.day(schema.nextDueDate),
             lastPurchased: VictualDates.day(schema.lastPurchased),
             lastUsed: VictualDates.day(schema.lastUsed),
-            stockQuantityUnit: schema.quantityUnitStock.flatMap(QuantityUnit.init),
-            purchaseQuantityUnit: schema.defaultQuantityUnitPurchase.flatMap(QuantityUnit.init),
-            consumeQuantityUnit: schema.defaultQuantityUnitConsume.flatMap(QuantityUnit.init),
-            priceQuantityUnit: schema.quantityUnitPrice.flatMap(QuantityUnit.init),
-            location: schema.location.flatMap(StorageLocation.init),
-            defaultLocation: schema.defaultLocation.flatMap(StorageLocation.init),
+            stockQuantityUnit: schema.quantityUnitStock.map(QuantityUnit.init),
+            purchaseQuantityUnit: schema.defaultQuantityUnitPurchase.map(QuantityUnit.init),
+            consumeQuantityUnit: schema.defaultQuantityUnitConsume.map(QuantityUnit.init),
+            priceQuantityUnit: schema.quantityUnitPrice.map(QuantityUnit.init),
+            location: schema.location.map(StorageLocation.init),
+            defaultLocation: schema.defaultLocation.map(StorageLocation.init),
             lastShoppingLocationID: schema.lastShoppingLocationId,
             averageShelfLifeDays: schema.averageShelfLifeDays,
             spoilRatePercent: schema.spoilRatePercent,

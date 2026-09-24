@@ -24,9 +24,9 @@ plumbing end to end. Defects in that layering are currently invisible: they will
 discovered by whichever front end is written first, and the cost of finding them rises
 with every additional platform that has already copied them.
 
-The outcome is an application a household member uses daily on a Mac — see what is in
-stock, what is due, what has run out, and record consuming and buying things — and a
-package whose seams have been proven by a real UI rather than by inspection.
+The outcome is an application a household member uses daily on a Mac: see what is in
+stock, what is due, what has run out, and record consuming and buying things. The package's
+seams are then proven by a real UI rather than by inspection.
 
 macOS is first rather than iOS, diverging from plan 17's 2026-08-29 posture. The reason
 is verification, not preference: a macOS target builds and runs headlessly on a CI
@@ -226,7 +226,7 @@ fact. Retained as the backstop.
    > The entitlement set is otherwise already what the App Store wants: sandbox
    > on, `network.client`, and nothing else.
 
-2. **Where the price column's absence is decided.** `CapabilityGate.canSeePrices` reads `STOCK_PRICES_VIEW`, but the server also simply omits the fields. The two should agree; if they ever disagree, the response is the authority and the gate is stale. Whether the UI should notice that disagreement or quietly follow the data is unsettled.
+2. **Where the price column's absence is decided.** `CapabilityGate.canSeePrices` reads `STOCK_PRICES_VIEW`, but the server also omits the fields. The two should agree; if they ever disagree, the response is the authority and the gate is stale. Whether the UI should notice that disagreement or quietly follow the data is unsettled.
 
 3. **Refresh interval.** `db-changed-time` polling is cheap but not free. A sensible default while the window is key, and whether to stop entirely when it is not, needs measurement rather than a guess.
 
@@ -236,7 +236,11 @@ fact. Retained as the backstop.
 2. `Scripts/update-openapi.py --check` reports the spec in sync.
 3. `Scripts/verify-platforms.sh` builds every platform including macOS.
 4. CI's `app` job generates the project and builds the application.
-5. Against a live instance, on a Mac: connect with an API key; relaunch and confirm the Keychain restores the session; consume one of a product and undo it, confirming the amount returns; sign in with a key whose owner lacks `STOCK_PRICES_VIEW` and confirm the price column is absent and nothing renders `0.00`; sign in with a read-only MCP key and confirm the booking commands are disabled and say why.
+5. Against a live instance, on a Mac:
+   - connect with an API key; relaunch and confirm the Keychain restores the session;
+   - consume one of a product and undo it, confirming the amount returns;
+   - sign in with a key whose owner lacks `STOCK_PRICES_VIEW` and confirm the price column is absent and nothing renders `0.00`;
+   - sign in with a read-only MCP key and confirm the booking commands are disabled and say why.
 
 Items 1 through 4 run unattended. Item 5 needs a Mac and a real instance, and is the only
 one that exercises the Keychain against a signed bundle.
@@ -289,7 +293,7 @@ at all — loses `path`. Both are exactly what this plan needs them for.
 That one route is therefore issued directly, through the same transport and the
 same middleware chain the generated client uses, and decoded into hand-written
 rows. It is the only such exception in the package and is documented where it
-lives. It is also worth reporting upstream: a discriminator, or simply declaring
+lives. It is also worth reporting upstream: a discriminator, or declaring
 `id` required on `Product`, would make the union decodable.
 
 **Every write was refused, and the specification could not have shown it.** Two
@@ -399,7 +403,9 @@ already intended, now demonstrated against the case that provoked it.
 instance: purchase three, and stock goes 9 to 12; consume one, and it goes to
 11; undo the transaction, and it returns to 12. The booking's `transaction_id`
 is what undo is addressed to, and `spoiled` maps back from the wire's `0` to
-`false`. The reads were exercised at the same time and all decode from real
+`false`.
+
+The reads were exercised at the same time and all decode from real
 rows — quantity units keeping `name_plural`, a location keeping its `path`,
 `row_created_timestamp` arriving as `"2026-09-19 14:30:23"` and parsing,
 prices visible at `17.91` for nine packs at `1.99`, and the below-minimum
