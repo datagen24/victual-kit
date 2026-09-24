@@ -46,12 +46,55 @@ extension VictualClient {
     /// show what it just connected to. The time zone is best-effort: failing to
     /// learn it does not fail the connection, it only leaves zone-less
     /// timestamps read in the device's zone.
+    ///
+    /// It is also bounded. Once the instance has answered, verification waits
+    /// at most ``timeZoneGracePeriod`` more for the zone, so a stalled
+    /// `/system/time` cannot hold a successful connection for a URL session's
+    /// full timeout. A lookup still running then is left to finish, and
+    /// stores the zone when it does.
     @discardableResult
     public func verifyConnection() async throws(VictualError) -> SystemInformation {
-        async let zone = try? loadServerTimeZone()
-        let information = try await systemInfo()
-        _ = await zone
+        try await verifyConnection(timeZoneGracePeriod: Self.timeZoneGracePeriod)
+    }
+
+    /// How long a successful verification waits for the time zone.
+    static let timeZoneGracePeriod: Duration = .seconds(2)
+
+    /// ``verifyConnection()`` with the grace period injectable, for tests.
+    func verifyConnection(
+        timeZoneGracePeriod: Duration
+    ) async throws(VictualError) -> SystemInformation {
+        let client = self
+        let zoneLookup = Task { _ = try? await client.loadServerTimeZone() }
+        let information: SystemInformation
+        do {
+            information = try await systemInfo()
+        } catch {
+            zoneLookup.cancel()
+            throw error
+        }
+        await Self.wait(for: zoneLookup, atMost: timeZoneGracePeriod)
         return information
+    }
+
+    /// Returns when `task` finishes or `limit` passes, whichever is first,
+    /// without cancelling `task`.
+    ///
+    /// Not a task group: a group waits for every child, and awaiting another
+    /// task's `value` does not stop on cancellation, so a group would wait out
+    /// the slow task after all.
+    static func wait(for task: Task<Void, Never>, atMost limit: Duration) async {
+        let once = ResumeOnce()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Task {
+                await task.value
+                once.resume(continuation)
+            }
+            Task {
+                try? await Task.sleep(for: limit)
+                once.resume(continuation)
+            }
+        }
     }
 
     /// Asks the instance which time zone it renders local timestamps in, and
@@ -141,5 +184,19 @@ public struct SystemInformation: Hashable, Sendable {
         self.releaseDate = releaseDate
         self.phpVersion = phpVersion
         self.databaseEngine = databaseEngine
+    }
+}
+
+/// Resumes a continuation the first time it is asked to, and ignores the rest.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var resumed = false
+
+    func resume(_ continuation: CheckedContinuation<Void, Never>) {
+        let first = lock.withLock {
+            defer { resumed = true }
+            return !resumed
+        }
+        if first { continuation.resume() }
     }
 }

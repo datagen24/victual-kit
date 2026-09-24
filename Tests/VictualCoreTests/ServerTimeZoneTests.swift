@@ -92,6 +92,36 @@ struct ServerTimeZoneTests {
         #expect(client.serverTimeZone == nil)
     }
 
+    @Test("A stalled time-zone lookup does not hold up a successful connection")
+    func stalledLookupIsBounded() async throws {
+        let transport = StubTransport { request, _, _, _ in
+            if request.path == "/system/time" {
+                // Long enough to notice, short enough not to slow the suite.
+                try await Task.sleep(for: .milliseconds(600))
+                return (
+                    HTTPResponse(status: .ok, headerFields: [.contentType: "application/json"]),
+                    HTTPBody(#"{"timezone":"Europe/Berlin"}"#)
+                )
+            }
+            return (
+                HTTPResponse(status: .ok, headerFields: [.contentType: "application/json"]),
+                HTTPBody(systemInfoJSON)
+            )
+        }
+        let client = VictualClient.stubbed(transport)
+        let clock = ContinuousClock()
+
+        let started = clock.now
+        _ = try await client.verifyConnection(timeZoneGracePeriod: .milliseconds(100))
+
+        #expect(clock.now - started < .milliseconds(500))
+        #expect(client.serverTimeZone == nil)
+
+        // Left running rather than cancelled, it still arrives.
+        try await Task.sleep(for: .milliseconds(900))
+        #expect(client.serverTimeZone == berlin)
+    }
+
     @Test("A zone Foundation does not know is not remembered")
     func unknownZoneIgnored() async throws {
         let client = VictualClient.stubbed(
