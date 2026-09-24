@@ -39,13 +39,50 @@ extension VictualClient {
 
 
     /// Performs the cheapest authenticated round trip, to confirm the address
-    /// really is a Victual instance and the key is accepted.
+    /// really is a Victual instance and the key is accepted — and, alongside
+    /// it, learns the instance's time zone.
     ///
     /// Returns the instance's ``SystemInformation`` so a connection screen can
-    /// show what it just connected to.
+    /// show what it just connected to. The time zone is best-effort: failing to
+    /// learn it does not fail the connection, it only leaves zone-less
+    /// timestamps read in the device's zone.
     @discardableResult
     public func verifyConnection() async throws(VictualError) -> SystemInformation {
-        try await systemInfo()
+        async let zone = try? loadServerTimeZone()
+        let information = try await systemInfo()
+        _ = await zone
+        return information
+    }
+
+    /// Asks the instance which time zone it renders local timestamps in, and
+    /// remembers it for this client and every copy of it.
+    ///
+    /// The server renders `row_created_timestamp`, `changed_time` and the like
+    /// as `"YYYY-MM-DD HH:MM:SS"` in its configured zone, with no offset. Read
+    /// in the device's zone instead, every such instant shifts by the
+    /// difference — the phone of someone travelling, or a server configured in
+    /// UTC.
+    ///
+    /// - Returns: The zone, or `nil` when the server named one Foundation does
+    ///   not know — in which case nothing is remembered.
+    @discardableResult
+    public func loadServerTimeZone() async throws(VictualError) -> TimeZone? {
+        let zone: TimeZone? = try await perform {
+            try await underlying.getSystemTime(.init())
+        } unwrap: { output in
+            switch output {
+            case .ok(let response):
+                return try response.body.json.timezone.flatMap(TimeZone.init(identifier:))
+            case .badRequest(let response):
+                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
+            case .unauthorized:
+                throw VictualError.unauthorized
+            case .undocumented(let statusCode, _):
+                throw VictualError.forStatus(statusCode)
+            }
+        }
+        if let zone { clock.timeZone = zone }
+        return zone
     }
 
     /// Runs a generated operation and narrows every failure to ``VictualError``.
@@ -58,18 +95,18 @@ extension VictualClient {
     /// Internal rather than private so the wrappers in `VictualClient+Stock.swift`
     /// and `VictualClient+Bookings.swift` share it; it stays out of the package's
     /// public surface because its `Output` is always a generated type.
+    ///
+    /// Both the call and the unwrap run with the instance's time zone bound, so
+    /// whatever timestamps they decode are read in it. See
+    /// ``VictualDates/serverTimeZone``.
     func perform<Output, Value>(
         _ call: () async throws -> Output,
         unwrap: (Output) throws -> Value
     ) async throws(VictualError) -> Value {
-        let output: Output
         do {
-            output = try await call()
-        } catch {
-            throw VictualError.mapping(error)
-        }
-        do {
-            return try unwrap(output)
+            return try await VictualDates.$serverTimeZone.withValue(clock.timeZone) {
+                try unwrap(try await call())
+            }
         } catch {
             throw VictualError.mapping(error)
         }

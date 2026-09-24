@@ -121,6 +121,11 @@ Three rules are applied once, at that boundary, rather than at every call site:
   strings; `VictualDates.timestamp(_:)` reads that rendering, ISO 8601, and the
   PostgreSQL `TIMESTAMPTZ` form label fields such as `retired_at` use. The same
   lenience covers the `" 00:00:00"` suffix ADR-0005 documents on day fields.
+- **Timestamps are read in the instance's time zone.** A timestamp without an
+  offset is the server's local time, so `verifyConnection()` learns the zone
+  from `GET /system/time` and every copy of the client reads such timestamps in
+  it. One that states an offset keeps it. Calendar days (`best_before_date`)
+  are not instants and stay in the device's zone.
 - **`integer` 0/1 flags become `Bool`.**
 
 ### Errors
