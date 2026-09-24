@@ -1,0 +1,20 @@
+extends: substitution
+message: "Consider '%s' instead of '%s'; preserve the technical meaning."
+level: suggestion
+scope: text & ~frontmatter
+ignorecase: true
+swap:
+  in order to: to
+  due to the fact that: because
+  for the purpose of: for
+  at this point in time: now, with a date if this describes status
+  in the event that: if
+  a number of: several, or the exact number
+  utilize: use
+  utilizes: uses
+  utilized: used
+  utilization: use
+  serves as: is, or a verb that names the function
+  boasts: has
+  could potentially: could
+  may potentially: may

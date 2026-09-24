@@ -8,7 +8,7 @@ It connects to an instance, restores from the Keychain, and shows a household's 
 sidebar of the server's status buckets and the locations tree, a table of stock, a product
 inspector, and the five bookings with undo.
 
-Two behaviours are deliberate and easy to "fix" wrongly:
+Two behaviours are deliberate, and changing either one would be a regression:
 
 - **Booking commands are disabled, not hidden**, when the key's owner lacks the permission,
   and the tooltip names it. A household member should be able to see that consume exists
