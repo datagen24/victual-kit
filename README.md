@@ -25,6 +25,10 @@ consumer, and how its seams get proven. See
 [its README](Apps/Victual/README.md) and
 [docs/plans/01-macos-stock-app.md](docs/plans/01-macos-stock-app.md).
 
+`Apps/VictualPhone` is the iPhone application: the same stores, plus barcode and label
+scanning. See [its README](Apps/VictualPhone/README.md) and
+[docs/plans/02-iphone-scanning-app.md](docs/plans/02-iphone-scanning-app.md).
+
 ## Requirements
 
 Swift 6.0, and macOS 14 / iOS 17 / iPadOS 17 / tvOS 17 / watchOS 10 / visionOS 1.
@@ -98,7 +102,7 @@ let details = try response.ok.body.json
 
 `VictualCore` deliberately does not wrap all 145 operations. What is wrapped is
 the connection flow (`VictualClient+Convenience.swift`), the stock reads
-(`VictualClient+Stock.swift`), the five bookings and undo
+(`VictualClient+Stock.swift`), scan resolution (`VictualClient+Scanning.swift`), the five bookings and undo
 (`VictualClient+Bookings.swift`), and the entity listings a stock list cannot
 render without (`VictualClient+Objects.swift`). Add more the same way as a front
 end needs them: generated call in, `VictualError` out, a hand-written type across
@@ -255,6 +259,7 @@ Scripts/build.sh test                  # swift test, with the generated-code noi
 Scripts/verify-platforms.sh            # build every product for every supported platform
 Scripts/update-openapi.py              # re-sync the specification
 cd Apps/Victual && xcodegen generate   # regenerate the macOS application's project
+cd Apps/VictualPhone && xcodegen generate   # and the iPhone application's
 ```
 
 Design records live in [docs/plans/](docs/plans/README.md). Architectural decisions do
