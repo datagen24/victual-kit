@@ -23,7 +23,9 @@ The package needs a Victual server at **0.2.0-MVP or later**.
 books the five stock actions with undo. It is the package's first consumer, and how the
 package's seams are tested against a real interface.
 
-An iPhone application built around Siri is at the concept stage. Its design is in
+[Victual for iPhone](apps/iphone.md) uses the same stores and adds barcode and label
+scanning: point the camera at a package or a Victual label, see what it is, and book it.
+Siri support for it is at the concept stage, in
 [docs/concepts/](https://github.com/datagen24/victual-kit/tree/main/docs/concepts) in the
 repository.
 

@@ -149,11 +149,9 @@ extension VictualClient {
 
     /// What the authenticating key's owner is allowed to do.
     ///
-    /// This is the endpoint to ask about the acting user. `GET /user` is not
-    /// usable: upstream types its 200 response as an object carrying `items`,
-    /// which is meaningless on an object, so it generates as a free-form
-    /// container rather than a user. That is recorded in
-    /// `openapi/spec-lock.json` under `upstreamIssuesLeftInPlace`.
+    /// This is the endpoint to ask about what the acting user may do: it
+    /// answers the key's type and read-only flag alongside the resolved
+    /// permissions, which `GET /user` does not.
     public func capabilities() async throws(VictualError) -> VictualCapabilities {
         try await perform {
             try await underlying.getUserCapabilities(.init())

@@ -20,18 +20,29 @@ struct BookingSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var amount: Double = 1
-    @State private var spoiled = false
-    @State private var usesDueDate = true
-    @State private var dueDate = Date()
-    @State private var usesPrice = false
-    @State private var price: Double = 0
-    @State private var locationID: Int?
-    @State private var destinationID: Int?
-    @State private var stockEntryID: String?
-    @State private var note = ""
-    @State private var allowSubstitution = false
+    /// Every field the form edits, and the rules for what they mean. Shared
+    /// with the iPhone application, so the two cannot disagree about what a
+    /// valid booking is.
+    @State private var draft: BookingDraft
     @State private var isCommitting = false
+
+    init(
+        action: StockAction,
+        product: ProductDetail?,
+        productID: Int,
+        entries: [StockEntry],
+        store: StockStore,
+        onCommit: @escaping (BookingRequest) async -> Void
+    ) {
+        self.action = action
+        self.product = product
+        self.productID = productID
+        self.entries = entries
+        self.store = store
+        self.onCommit = onCommit
+        self._draft = State(
+            initialValue: BookingDraft(action: action, productID: productID, product: product))
+    }
 
     private var unit: QuantityUnit? { product?.stockQuantityUnit }
     private var productName: String { product?.product.name ?? "Product \(productID)" }
@@ -42,14 +53,14 @@ struct BookingSheet: View {
                 Section {
                     amountField
                     if action == .consume {
-                        Toggle("Thrown away rather than used", isOn: $spoiled)
+                        Toggle("Thrown away rather than used", isOn: $draft.spoiled)
                             .help("Recorded as spoiled, which is what makes a spoil rate mean anything.")
                     }
                     if action == .transfer {
-                        locationPicker("From", selection: $locationID)
-                        locationPicker("To", selection: $destinationID)
+                        locationPicker("From", selection: $draft.locationID)
+                        locationPicker("To", selection: $draft.destinationID)
                     } else if action != .open {
-                        locationPicker("Location", selection: $locationID, allowsAny: true)
+                        locationPicker("Location", selection: $draft.locationID, allowsAny: true)
                     }
                 }
 
@@ -57,28 +68,31 @@ struct BookingSheet: View {
                     Section("Specific container") {
                         entryPicker
                         if product?.hasChildProducts == true, action != .transfer {
-                            Toggle("Use a sub-product if this one is out", isOn: $allowSubstitution)
+                            Toggle("Use a sub-product if this one is out", isOn: $draft.allowSubstitution)
                         }
                     }
                 }
 
                 if action == .purchase || action == .inventory {
                     Section {
-                        Toggle("Has a due date", isOn: $usesDueDate)
-                        if usesDueDate {
-                            DatePicker("Due", selection: $dueDate, displayedComponents: .date)
+                        Toggle("Set a due date", isOn: $draft.usesDueDate)
+                        if draft.usesDueDate {
+                            DatePicker("Due", selection: $draft.dueDate, displayedComponents: .date)
                         }
-                        Toggle("Record a price", isOn: $usesPrice)
-                        if usesPrice {
-                            TextField("Price per \(unit?.name ?? "unit")", value: $price, format: .number)
+                        Toggle("Record a price", isOn: $draft.usesPrice)
+                        if draft.usesPrice {
+                            TextField("Price per \(unit?.name ?? "unit")", value: $draft.price, format: .number)
                                 .monospacedDigit()
                         }
-                        TextField("Note", text: $note, axis: .vertical)
+                        TextField("Note", text: $draft.note, axis: .vertical)
                     } footer: {
-                        // Leaving the price off is not the same as entering 0.
-                        Text("A price left off is recorded as unknown, not as free.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        // Leaving the price off is not the same as entering 0, and
+                        // leaving the date off is not the same as "today".
+                        Text(
+                            "A due date left off takes the product's own shelf life. A price left off is recorded as unknown, not as free."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -89,7 +103,6 @@ struct BookingSheet: View {
         }
         .frame(width: 440)
         .frame(minHeight: 300, maxHeight: 560)
-        .onAppear(perform: prepare)
     }
 
     // MARK: - Fields
@@ -98,22 +111,15 @@ struct BookingSheet: View {
     private var amountField: some View {
         let label = action == .inventory ? "Counted amount" : "Amount"
         HStack {
-            TextField(label, value: $amount, format: .number.precision(.fractionLength(0...3)))
+            TextField(label, value: $draft.amount, format: .number.precision(.fractionLength(0...3)))
                 .monospacedDigit()
-            Stepper(label, value: $amount, in: stepperRange, step: 1)
+            Stepper(label, value: $draft.amount, in: draft.amountRange, step: 1)
                 .labelsHidden()
             if let unit {
-                Text(unit.name(for: amount)).foregroundStyle(.secondary)
+                Text(unit.name(for: draft.amount)).foregroundStyle(.secondary)
             }
         }
         .help(amountHelp)
-    }
-
-    /// An inventory may legitimately be set to zero — "there is none left" is a
-    /// count. The other four move an amount, and moving nothing is not a thing
-    /// to ask the server to do.
-    private var stepperRange: ClosedRange<Double> {
-        action == .inventory ? 0...100_000 : 0.001...100_000
     }
 
     private var amountHelp: String {
@@ -124,20 +130,15 @@ struct BookingSheet: View {
 
     @ViewBuilder
     private var entryPicker: some View {
-        Picker("Container", selection: $stockEntryID) {
+        Picker("Container", selection: $draft.stockEntryID) {
             Text("Whichever is due first").tag(String?.none)
             ForEach(availableEntries, id: \.id) { entry in
                 Text(describe(entry)).tag(entry.stockID)
             }
         }
         .disabled(availableEntries.isEmpty)
-        .onChange(of: stockEntryID) { _, new in
-            // The API requires an amount of exactly 1 alongside a named entry,
-            // and the wrapper refuses the combination before sending it.
-            if new != nil { amount = 1 }
-        }
 
-        if stockEntryID != nil {
+        if draft.stockEntryID != nil {
             Text("A named container is booked one at a time.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -171,7 +172,7 @@ struct BookingSheet: View {
             Button(action.title) { commit() }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(!isValid || isCommitting)
+                .disabled(!draft.isValid || isCommitting)
         }
         .padding()
     }
@@ -189,85 +190,12 @@ struct BookingSheet: View {
         return candidates.filter { $0.productID == productID && $0.stockID != nil }
     }
 
-    private var isValid: Bool {
-        switch action {
-        case .inventory: return amount >= 0
-        case .transfer:
-            guard let from = locationID, let to = destinationID else { return false }
-            return from != to && amount > 0
-        case .consume, .purchase, .open:
-            return amount > 0
-        }
-    }
-
-    private func prepare() {
-        switch action {
-        case .inventory: amount = product?.stockAmount ?? 0
-        default: amount = 1
-        }
-        locationID = action == .transfer ? product?.location?.id : nil
-        dueDate = product?.nextDueDate ?? Date()
-    }
-
     private func commit() {
         isCommitting = true
-        let request = buildRequest()
+        let request = draft.request
         Task {
             await onCommit(request)
             dismiss()
-        }
-    }
-
-    private func buildRequest() -> BookingRequest {
-        let entry = stockEntryID.flatMap { $0.isEmpty ? nil : $0 }
-        switch action {
-        case .consume:
-            return .consume(
-                productID: productID,
-                amount: amount,
-                spoiled: spoiled,
-                stockEntryID: entry,
-                locationID: locationID,
-                allowSubproductSubstitution: allowSubstitution
-            )
-        case .purchase:
-            return .purchase(
-                productID: productID,
-                amount: amount,
-                bestBeforeDate: usesDueDate ? dueDate : nil,
-                price: usesPrice ? price : nil,
-                locationID: locationID,
-                shoppingLocationID: nil,
-                stockLabelType: nil,
-                note: note.isEmpty ? nil : note
-            )
-        case .open:
-            return .open(
-                productID: productID,
-                amount: amount,
-                stockEntryID: entry,
-                allowSubproductSubstitution: allowSubstitution,
-                measurement: nil
-            )
-        case .inventory:
-            return .inventory(
-                productID: productID,
-                newAmount: amount,
-                bestBeforeDate: usesDueDate ? dueDate : nil,
-                locationID: locationID,
-                shoppingLocationID: nil,
-                price: usesPrice ? price : nil,
-                stockLabelType: nil,
-                note: note.isEmpty ? nil : note
-            )
-        case .transfer:
-            return .transfer(
-                productID: productID,
-                amount: amount,
-                fromLocationID: locationID ?? 0,
-                toLocationID: destinationID ?? 0,
-                stockEntryID: entry
-            )
         }
     }
 

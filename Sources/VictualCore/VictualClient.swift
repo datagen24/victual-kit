@@ -33,6 +33,15 @@ public struct VictualClient: Sendable {
     /// See that method for why.
     let channel: Channel
 
+    /// What this client knows about the instance's clock. Shared by every copy
+    /// of the client, so learning the zone once serves all of them.
+    let clock: InstanceClock
+
+    /// The instance's configured time zone, once ``loadServerTimeZone()`` has
+    /// learned it — ``verifyConnection()`` does. Zone-less timestamps are read
+    /// in it; until it is known they are read in the device's zone.
+    public var serverTimeZone: TimeZone? { clock.timeZone }
+
     /// Creates a client over an explicit transport.
     ///
     /// Use this to inject a stub transport in tests, or a transport other than
@@ -41,8 +50,10 @@ public struct VictualClient: Sendable {
         server: VictualServer,
         apiKey: VictualAPIKey,
         transport: any ClientTransport,
-        middlewares: [any ClientMiddleware] = []
+        middlewares: [any ClientMiddleware] = [],
+        serverTimeZone: TimeZone? = nil
     ) {
+        self.clock = InstanceClock(timeZone: serverTimeZone)
         // The content-type shim runs outermost so that it sees, and can
         // correct, whatever the runtime set -- see ``JSONContentTypeMiddleware``
         // for why a request without it is refused by the server.
@@ -124,5 +135,23 @@ public struct VictualClient: Sendable {
             }
             return try await next(request, body, baseURL)
         }
+    }
+}
+
+/// The instance's time zone, learned once and shared.
+///
+/// A reference type because ``VictualClient`` is a value that is copied into
+/// every store; each copy must see the zone as soon as any of them learns it.
+final class InstanceClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedTimeZone: TimeZone?
+
+    init(timeZone: TimeZone?) {
+        storedTimeZone = timeZone
+    }
+
+    var timeZone: TimeZone? {
+        get { lock.withLock { storedTimeZone } }
+        set { lock.withLock { storedTimeZone = newValue } }
     }
 }

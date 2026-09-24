@@ -1,28 +1,48 @@
 import Foundation
 import OpenAPIRuntime
 
-/// How this package reads and writes the date shapes Victual puts on the wire.
+/// How this package reads and writes the two date shapes Victual puts on the wire.
 ///
 /// The server renders timestamps the way its database stores them — `"2019-05-03
-/// 18:24:04"`, a local wall-clock value with a space instead of a `T` and no
-/// offset. Since Victual 0.2.0-MVP the specification says so: those fields are
-/// plain strings with a `pattern`, not `format: date-time`
-/// ([ADR-0027](https://github.com/datagen24/victual/blob/master/docs/adr/0027-timestamps-are-local-strings-documented-booleans-are-booleans.md)),
-/// so they generate as `Swift.String` and are parsed here by ``timestamp(_:)``
-/// at the mapping boundary. Day-only fields (`format: date`) also generate as
-/// `Swift.String` and are parsed by ``day(_:)``; they are tolerated with a
-/// `" 00:00:00"` suffix.
+/// 18:24:04"`, a space instead of a `T` and no offset — while the specification
+/// types those fields `format: date-time`. A strict ISO 8601 reader rejects them,
+/// so `row_created_timestamp` alone would fail every stock-entry read.
+/// [ADR-0005](https://github.com/datagen24/victual/blob/master/docs/adr/0005-wire-contract-is-the-invariant.md)
+/// documents that rendering as an accepted exception; this is where the package
+/// absorbs it, once, so no caller has to.
 ///
-/// The few fields still typed `format: date-time` (label evidence
-/// `observed_at`) go through ``transcoder``, which reads ISO 8601 and the
-/// database renderings alike, so an older server that still declared the local
-/// fields `date-time` decodes too.
+/// Day-only fields (`format: date`) generate as `Swift.String` rather than
+/// `Foundation.Date`, so they are parsed here explicitly by ``day(_:)`` at the
+/// mapping boundary. They too are tolerated with a `" 00:00:00"` suffix.
 ///
-/// Both readers interpret a zone-less value in
-/// `TimeZone.autoupdatingCurrent`. A due date is a household's calendar day, not
-/// an instant, so parsing `"2026-01-31"` as UTC and rendering it locally would
-/// show the wrong day to anyone west of Greenwich.
+/// ## Which time zone
+///
+/// The two shapes are read differently on purpose.
+///
+/// - A **timestamp** without an offset (`"2019-05-03 18:24:04"`) is an instant
+///   rendered in the *instance's* configured zone — the server says so in the
+///   specification. It is read in ``serverTimeZone`` when the client has learned
+///   it from `GET /system/time`, and in the device's zone only until then. A
+///   phone in another zone would otherwise shift every such instant by the
+///   difference. A timestamp that states its own offset keeps it.
+/// - A **day** (`"2026-01-31"`) is a household's calendar day, not an instant.
+///   It is read as local midnight in `TimeZone.autoupdatingCurrent`, so the day
+///   a due date names is the day shown, wherever the phone is.
 public enum VictualDates {
+    /// The zone zone-less timestamps are read in, for the duration of one
+    /// client operation.
+    ///
+    /// Bound by ``VictualClient`` around each request it decodes, from what it
+    /// learned from `GET /system/time`; `nil` outside one, or before the zone
+    /// is known, which falls back to the device's zone. Task-local so that the
+    /// runtime's transcoder, the entity-listing decoder and the model mappings
+    /// all read the same zone without threading it through every initializer.
+    @TaskLocal static var serverTimeZone: TimeZone?
+
+    /// The zone a zone-less timestamp is read in right now: the instance's,
+    /// or `nil` for the device's.
+    static var timestampZone: TimeZone? { serverTimeZone }
+
     /// Parses a `format: date` field — a calendar day, as local midnight.
     ///
     /// Accepts `"2026-01-31"` and `"2026-01-31 00:00:00"`, and returns `nil` for
@@ -31,23 +51,38 @@ public enum VictualDates {
         guard let text else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
-        return formatters.parse(trimmed, using: dayFormats)
+        return formatters.parse(trimmed, using: dayFormats, in: nil)
     }
 
-    /// Parses a local timestamp field — `"YYYY-MM-DD HH:MM:SS"` in the server's
-    /// zone — or the ISO 8601 form.
+    /// Parses a timestamp field — `row_created_timestamp`, `changed_time` and
+    /// the like — which since upstream ADR-0027 the specification types as a
+    /// plain string rather than `format: date-time`.
     ///
-    /// Returns `nil` for a missing or empty value, or one that matches neither.
-    public static func timestamp(_ text: String?) -> Date? {
+    /// Reads everything ``transcoder`` reads, and additionally the PostgreSQL
+    /// `TIMESTAMPTZ` rendering — `"2026-09-01 10:00:00.123456+00"`, a UTC offset
+    /// and optional fractional seconds — which ADR-0027 names as an exception
+    /// for label fields such as `retired_at`. Fractional seconds are dropped:
+    /// nothing here displays or compares below a second. Returns `nil` for an
+    /// absent, empty or unreadable value.
+    ///
+    /// - Parameter timeZone: The zone a value without an offset was rendered
+    ///   in — the instance's. Defaults to the one ``VictualClient`` has bound
+    ///   for the current operation, or the device's.
+    public static func timestamp(_ text: String?, in timeZone: TimeZone? = nil) -> Date? {
         guard let text else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
-        return try? VictualDateTranscoder().decode(trimmed)
+        let zone = timeZone ?? timestampZone
+        if let date = VictualDateTranscoder.decode(trimmed, in: zone) { return date }
+        let withoutFraction = trimmed.replacingOccurrences(
+            of: #"(:\d{2})\.\d+"#, with: "$1", options: .regularExpression)
+        // The offset in the text wins over the formatter's zone.
+        return formatters.parse(withoutFraction, using: zonedFormats, in: zone)
     }
 
     /// Renders a calendar day as the `YYYY-MM-DD` the API expects in a request body.
     public static func string(fromDay date: Date) -> String {
-        formatters.string(from: date, using: "yyyy-MM-dd")
+        formatters.string(from: date, using: "yyyy-MM-dd", in: nil)
     }
 
     /// The transcoder ``VictualClient`` installs for every `format: date-time`
@@ -60,6 +95,9 @@ public enum VictualDates {
     fileprivate static let timestampFormats = [
         "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd",
     ]
+    /// PostgreSQL's `TIMESTAMPTZ` output: an offset of `+HH`, or `+HH:MM` for a
+    /// zone off the hour.
+    private static let zonedFormats = ["yyyy-MM-dd HH:mm:ssX", "yyyy-MM-dd HH:mm:ssXXX"]
     fileprivate static let formatters = FormatterCache()
 }
 
@@ -80,10 +118,7 @@ struct VictualDateTranscoder: DateTranscoder {
 
     func decode(_ string: String) throws -> Date {
         let trimmed = string.trimmingCharacters(in: .whitespaces)
-        if let date = VictualDates.formatters.parseISO8601(trimmed) { return date }
-        if let date = VictualDates.formatters.parse(trimmed, using: VictualDates.timestampFormats) {
-            return date
-        }
+        if let date = Self.decode(trimmed, in: VictualDates.timestampZone) { return date }
         let known = VictualDates.timestampFormats.joined(separator: ", ")
         throw DecodingError.dataCorrupted(
             .init(
@@ -93,6 +128,15 @@ struct VictualDateTranscoder: DateTranscoder {
                     + "database renderings (\(known))."
             )
         )
+    }
+}
+
+extension VictualDateTranscoder {
+    /// ISO 8601 first — its offset is authoritative — then the database
+    /// renderings, which carry none and are read in `timeZone`.
+    static func decode(_ trimmed: String, in timeZone: TimeZone?) -> Date? {
+        if let date = VictualDates.formatters.parseISO8601(trimmed) { return date }
+        return VictualDates.formatters.parse(trimmed, using: VictualDates.timestampFormats, in: timeZone)
     }
 }
 
@@ -120,30 +164,34 @@ final class FormatterCache: @unchecked Sendable {
         }
     }
 
-    func parse(_ text: String, using formats: [String]) -> Date? {
+    func parse(_ text: String, using formats: [String], in timeZone: TimeZone?) -> Date? {
         lock.withLock {
             for format in formats {
-                if let date = formatter(format).date(from: text) { return date }
+                if let date = formatter(format, timeZone).date(from: text) { return date }
             }
             return nil
         }
     }
 
-    func string(from date: Date, using format: String) -> String {
-        lock.withLock { formatter(format).string(from: date) }
+    func string(from date: Date, using format: String, in timeZone: TimeZone?) -> String {
+        lock.withLock { formatter(format, timeZone).string(from: date) }
     }
 
     /// Must be called with ``lock`` held.
-    private func formatter(_ format: String) -> DateFormatter {
-        if let existing = cache[format] { return existing }
+    ///
+    /// Keyed by format and zone. `nil` is the device's auto-updating zone, kept
+    /// as its own key so a calendar day follows the device if the household
+    /// travels.
+    private func formatter(_ format: String, _ timeZone: TimeZone?) -> DateFormatter {
+        let key = format + "|" + (timeZone?.identifier ?? "device")
+        if let existing = cache[key] { return existing }
         let made = DateFormatter()
         // A fixed locale so a user's regional settings cannot change how a wire
-        // format parses; an auto-updating zone so a calendar day stays the day
-        // the household is living in.
+        // format parses.
         made.locale = Locale(identifier: "en_US_POSIX")
-        made.timeZone = TimeZone.autoupdatingCurrent
+        made.timeZone = timeZone ?? .autoupdatingCurrent
         made.dateFormat = format
-        cache[format] = made
+        cache[key] = made
         return made
     }
 }

@@ -5,7 +5,7 @@
   "upstreamCommit": "38445d4f84c2c88c8ed8af622982340639a918d2",
   "upstreamSha256": "d37bb3ffc1948292a5498c809b11bd9eb53d0191e9479da7e7900a6f56193ce2",
   "generatedSha256": "ee9ac83887557c0b9e1ae1a54f87102c336f3e7b32a6809f861fabe149159d48",
-  "syncedAt": "2026-09-24T21:13:55Z",
+  "syncedAt": "2026-09-24T21:21:18Z",
   "normalizations": {
     "pathsRewritten": 0,
     "operationIdsAssigned": 145,

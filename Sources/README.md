@@ -97,10 +97,11 @@ let response = try await client.underlying.getStockProductsByProductId(
 let details = try response.ok.body.json
 ```
 
-`VictualCore` deliberately does not wrap all 145 operations. It wraps four groups:
+`VictualCore` deliberately does not wrap all 145 operations. It wraps five groups:
 
 - the connection flow (`VictualClient+Convenience.swift`);
 - the stock reads (`VictualClient+Stock.swift`);
+- scan resolution (`VictualClient+Scanning.swift`);
 - the five bookings and undo (`VictualClient+Bookings.swift`);
 - the entity listings a stock list cannot render without (`VictualClient+Objects.swift`).
 
@@ -118,8 +119,13 @@ Three rules are applied once, at that boundary, rather than at every call site:
   as a local wall-clock value, `"2019-05-03 18:24:04"`, which is not RFC 3339. Since
   0.2.0-MVP the specification says so
   ([ADR-0027](https://github.com/datagen24/victual/blob/master/docs/adr/0027-timestamps-are-local-strings-documented-booleans-are-booleans.md)),
-  and those fields generate as strings. `VictualDates.timestamp(_:)` and
-  `VictualDates.day(_:)` turn them into `Date`s in the device's time zone.
+  and those fields generate as strings. `VictualDates.timestamp(_:)` reads that rendering,
+  ISO 8601, and the PostgreSQL `TIMESTAMPTZ` form that label fields such as `retired_at`
+  use. `VictualDates.day(_:)` reads calendar days, with or without a `" 00:00:00"` suffix.
+- **Timestamps are read in the instance's time zone.** A timestamp without an offset is the
+  server's local time, so `verifyConnection()` learns the zone from `GET /system/time` and
+  every copy of the client reads such timestamps in it. One that states an offset keeps
+  it. Calendar days (`best_before_date`) are not instants and stay in the device's zone.
 - **`integer` 0/1 flags become `Bool`.** Flags the document types `boolean` already
   arrive as booleans.
 

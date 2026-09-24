@@ -9,18 +9,20 @@ Scripts/build.sh test                  # swift test, with the generated-code noi
 Scripts/verify-platforms.sh            # build every product for every supported platform
 Scripts/update-openapi.py              # re-sync the specification from upstream
 cd Apps/Victual && xcodegen generate   # regenerate the macOS application's project
+cd Apps/VictualPhone && xcodegen generate   # and the iPhone application's
 ```
 
 `Scripts/build.sh` filters the output because swift-openapi-generator emits about 2.7 MB
 of Swift, and its deprecation warnings would otherwise bury real diagnostics.
 
-On every pull request the `CI` workflow runs four jobs:
+On every pull request the `CI` workflow runs five jobs:
 
 | Job | What it checks |
 | --- | --- |
 | `test` | `swift test` on macOS. |
 | `platforms` | A `VictualUI` build for macOS, iOS, iOS Simulator, tvOS, watchOS and visionOS. |
 | `app` | The macOS application, generated with XcodeGen and built unsigned. |
+| `phone` | The iPhone application, built unsigned for the simulator. The live scanner is verified on a phone. |
 | `spec-drift` | That the vendored specification matches upstream. It also runs weekly. |
 
 The `prose` and `docs` workflows check the documentation; see

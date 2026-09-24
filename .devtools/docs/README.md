@@ -23,6 +23,7 @@ every run, so a stale tree is never published.
 | `Sources/README.md` | Swift package › Guide |
 | `openapi/README.md` | Swift package › Tracking the specification |
 | `Apps/Victual/README.md` | Applications › Victual for macOS |
+| `Apps/VictualPhone/README.md` | Applications › Victual for iPhone |
 | `.devtools/vale/README.md` | Development › Prose checks |
 | `.devtools/docs/README.md` | Development › Documentation site |
 | `.devtools/docs/pages/` | Home, and the Development overview |

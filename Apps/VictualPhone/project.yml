@@ -1,0 +1,84 @@
+name: VictualPhone
+
+options:
+  bundleIdPrefix: dev.victual
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+packages:
+  VictualKit:
+    # The same package the macOS application consumes. The phone is its second
+    # front end, and the first one that is not a Mac.
+    path: ../..
+
+targets:
+  VictualPhone:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources/Assets.xcassets
+    dependencies:
+      - package: VictualKit
+        product: VictualUI
+      - package: VictualKit
+        product: VictualStock
+    # Generated output, like the .xcodeproj; not committed.
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Victual
+        # "Victual" is said "vittle", and without this VoiceOver and Siri read
+        # it back as "vik-choo-al". It fixes speaking only, not hearing; the
+        # app's name is docs/concepts/siri-and-app-intents.md §7.6's open
+        # question and is not settled by this.
+        CFBundleSpokenName: vittle
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Shown by the system the first time the scanner asks for the camera.
+        # It is the only thing a person reads before deciding, so it says what
+        # the camera is for and that nothing is kept.
+        NSCameraUsageDescription: Victual reads barcodes and labels with the camera, to find what you are holding in your household's stock. No image is stored or sent.
+        # Victual is self-hosted, and a household instance is commonly plain
+        # http on the LAN -- `http://pantry.local`, a bare IP. App Transport
+        # Security refuses those by default. This key exempts only local
+        # addresses; anything reached over the internet still needs TLS.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # Portrait only on a phone: a scanner that rotates under a person's
+        # hand while they aim it is worse than one that does not.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiredDeviceCapabilities:
+          - arm64
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.victual.VictualPhone
+        PRODUCT_NAME: Victual
+        TARGETED_DEVICE_FAMILY: "1"
+        # Matches the macOS application; see Apps/Victual/README.md#version.
+        MARKETING_VERSION: "0.1.0-MVP"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # The simulator needs no team. A device does: set DEVELOPMENT_TEAM
+        # locally (Xcode's Signing & Capabilities pane) rather than committing
+        # one. CI overrides this with CODE_SIGNING_ALLOWED=NO.
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+schemes:
+  VictualPhone:
+    build:
+      targets:
+        VictualPhone: all
+    run:
+      config: Debug
+    archive:
+      config: Release

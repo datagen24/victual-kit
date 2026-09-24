@@ -12,14 +12,15 @@ Documentation is published at **[victual-kit.readthedocs.io](https://victual-kit
 | --- | --- |
 | [`Sources/`](Sources/README.md) | The **VictualKit Swift package**: `VictualAPI` (generated from the server's OpenAPI document), `VictualCore`, `VictualUI` and `VictualStock`. Every Apple platform from macOS 14 and iOS 17. |
 | [`Apps/Victual/`](Apps/Victual/README.md) | **Victual for macOS**, `0.1.0-MVP`. Connects to an instance, shows a household's stock, and books the five stock actions with undo. The package's first consumer. |
+| [`Apps/VictualPhone/`](Apps/VictualPhone/README.md) | **Victual for iPhone**. The same stores, plus barcode and label scanning: point the camera at a package or a Victual label, see what it is, and book it. |
 | [`openapi/`](openapi/README.md) | The server's OpenAPI document, vendored and pinned to Victual **0.2.0-MVP**, with the record of every normalization applied to it. |
 | [`docs/plans/`](docs/plans/README.md) | Design records for major changes, with delivery status. |
-| [`docs/concepts/`](docs/concepts/siri-and-app-intents.md) | Earlier-stage thinking. The Siri and App Intents concept for an iPhone app lives here; that app is not in the repository yet. |
+| [`docs/concepts/`](docs/concepts/siri-and-app-intents.md) | Earlier-stage thinking: Siri and App Intents for the iPhone application. |
 | [`.devtools/`](.devtools/vale/README.md) | Prose checks for the documentation, and the documentation site's build. |
 
 ## Compatibility
 
-The package and the macOS application need a Victual server at **0.2.0-MVP or later**.
+The package and both applications need a Victual server at **0.2.0-MVP or later**.
 That release made the server send its documented booleans as `true`/`false`, and a
 booking response from an older server does not decode. The
 [package guide](Sources/README.md#requirements) has the detail.
@@ -44,10 +45,11 @@ Scripts/build.sh test                  # swift test, with the generated-code noi
 Scripts/verify-platforms.sh            # build every product for every supported platform
 Scripts/update-openapi.py              # re-sync the specification from upstream
 cd Apps/Victual && xcodegen generate   # regenerate the macOS application's project
+cd Apps/VictualPhone && xcodegen generate   # and the iPhone application's
 ```
 
 On every pull request the `CI` workflow runs the package tests, a build for each platform,
-the macOS application build, and a check that the vendored specification matches upstream.
+builds of both applications, and a check that the vendored specification matches upstream.
 The `prose` workflow lints the documentation with Vale. To run the same check before each
 commit, see [.devtools/vale/](.devtools/vale/README.md#check-commits-locally).
 

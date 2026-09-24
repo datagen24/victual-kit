@@ -68,6 +68,7 @@ nav:
       - Tracking the specification: package/openapi.md
   - Applications:
       - Victual for macOS: apps/macos.md
+      - Victual for iPhone: apps/iphone.md
   - Development:
       - Overview: development/index.md
       - Prose checks: development/prose.md

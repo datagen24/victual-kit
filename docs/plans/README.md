@@ -24,3 +24,4 @@ This table is the authority on delivery status.
 | # | Plan | Status | Dependencies or remaining work |
 | --- | --- | --- | --- |
 | 01 | [macOS stock application](01-macos-stock-app.md) | Built and exercised against a live instance 2026-09-21 | All three layers shipped; see [Executed](01-macos-stock-app.md#executed). Items 1-4 pass unattended, and consume-and-undo passes against a real server — which is where two defects that broke every write were found. Keychain restore is untested against a signed bundle; the price-redaction and read-only-key checks need an instance newer than the 4.6.0 available. |
+| 02 | [iPhone scanning application](02-iphone-scanning-app.md) | Built 2026-09-24; not yet run on a device | Package tests and both application builds pass. Verification item 4 — scanning on an iPhone against a live instance — is outstanding; see [Executed](02-iphone-scanning-app.md#executed). |

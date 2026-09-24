@@ -30,6 +30,7 @@ PAGES = {
     "Sources/README.md": "package/index.md",
     "openapi/README.md": "package/openapi.md",
     "Apps/Victual/README.md": "apps/macos.md",
+    "Apps/VictualPhone/README.md": "apps/iphone.md",
     ".devtools/vale/README.md": "development/prose.md",
     ".devtools/docs/README.md": "development/docs-site.md",
 }
