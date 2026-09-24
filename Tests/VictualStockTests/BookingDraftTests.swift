@@ -76,6 +76,31 @@ struct BookingDraftTests {
                 == .consume(productID: 7, amount: 1, stockEntryID: "lot-77"))
     }
 
+    @Test("Purchase and inventory from a lot's label act on the product, not the lot")
+    func lotIgnoredForPurchaseAndInventory() {
+        let entry = StockEntry(id: 77, stockID: "lot-77", productID: 7, locationID: 5, amount: 1)
+
+        let inventory = BookingDraft(action: .inventory, entry: entry, product: product)
+        #expect(inventory.stockEntryID == nil)
+        #expect(inventory.amount == 4)
+        #expect(inventory.isValid)
+
+        var purchase = BookingDraft(action: .purchase, entry: entry, product: product)
+        purchase.amount = 6
+        #expect(purchase.stockEntryID == nil)
+        #expect(purchase.isValid)
+    }
+
+    @Test("A transfer from a lot's label moves that lot, from where it is")
+    func transferFromLot() {
+        let entry = StockEntry(id: 77, stockID: "lot-77", productID: 7, locationID: 5, amount: 1)
+        let draft = BookingDraft(action: .transfer, entry: entry, product: product)
+
+        #expect(draft.stockEntryID == "lot-77")
+        #expect(draft.amount == 1)
+        #expect(draft.locationID == 5)
+    }
+
     @Test("A transfer needs two different locations")
     func transferNeedsTwoLocations() {
         var draft = BookingDraft(action: .transfer, productID: 7, product: product)

@@ -83,8 +83,8 @@ struct ScanScreen: View {
     private var cameraLayer: some View {
         switch camera {
         case .granted where LiveBarcodeScanner.isSupported:
-            LiveBarcodeScanner(isActive: workspace.presentedBooking == nil) { payload in
-                if scanner.submit(payload) { scanCount += 1 }
+            LiveBarcodeScanner(isActive: workspace.presentedBooking == nil) { payload, deliberate in
+                if scanner.submit(payload, force: deliberate) { scanCount += 1 }
             }
         case .denied:
             CameraUnavailable(

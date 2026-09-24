@@ -63,9 +63,22 @@ public struct BookingDraft: Hashable, Sendable {
     }
 
     /// Starts a draft for one named lot, as a per-unit label scan does.
+    ///
+    /// Only consume, open and transfer can address a lot. A purchase adds new
+    /// stock and an inventory counts the whole product, so for those the lot
+    /// is ignored and the draft is the product's — otherwise the lot would pin
+    /// the amount at 1 and an inventory could never be corrected.
     public init(action: StockAction, entry: StockEntry, product: ProductDetail?, now: Date = Date()) {
         self.init(action: action, productID: entry.productID ?? product?.id ?? 0, product: product, now: now)
-        self.stockEntryID = entry.stockID
+        switch action {
+        case .consume, .open, .transfer:
+            // Set directly: `didSet` does not run inside an initializer, so
+            // the amount the API requires alongside a lot is set here too.
+            stockEntryID = entry.stockID
+            if stockEntryID != nil { amount = 1 }
+        case .purchase, .inventory:
+            break
+        }
         if action == .transfer { locationID = entry.locationID ?? locationID }
     }
 

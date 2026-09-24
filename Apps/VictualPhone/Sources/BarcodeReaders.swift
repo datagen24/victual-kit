@@ -27,13 +27,14 @@ enum ScannedSymbologies {
 /// camera, which is why ``isSupported`` exists and why the scan screen has a
 /// fallback. It is not supported in the simulator at all.
 ///
-/// It reports each code when it first enters the frame. Repeats are the
-/// `ScanStore`'s business, not this view's.
+/// It reports each code when it first enters the frame, and again when a
+/// person taps its highlight. The second flag says which: a tap is deliberate
+/// and should skip `ScanStore`'s repeat window, a frame detection should not.
 struct LiveBarcodeScanner: UIViewControllerRepresentable {
     /// Whether the camera should be running. Off while a form is up, so a
     /// package on the counter does not replace the thing being booked.
     var isActive: Bool
-    var onScan: (String) -> Void
+    var onScan: (_ payload: String, _ deliberate: Bool) -> Void
 
     @MainActor static var isSupported: Bool { DataScannerViewController.isSupported }
     @MainActor static var isAvailable: Bool { DataScannerViewController.isAvailable }
@@ -71,9 +72,9 @@ struct LiveBarcodeScanner: UIViewControllerRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, DataScannerViewControllerDelegate {
-        var onScan: (String) -> Void
+        var onScan: (String, Bool) -> Void
 
-        init(onScan: @escaping (String) -> Void) {
+        init(onScan: @escaping (String, Bool) -> Void) {
             self.onScan = onScan
         }
 
@@ -84,17 +85,17 @@ struct LiveBarcodeScanner: UIViewControllerRepresentable {
         ) {
             for item in addedItems {
                 if case .barcode(let barcode) = item, let payload = barcode.payloadStringValue {
-                    onScan(payload)
+                    onScan(payload, false)
                     return
                 }
             }
         }
 
         /// A tap on a highlighted code is a person choosing it, so it is
-        /// reported even if that code was already the last one read.
+        /// reported as deliberate, even if it was the last code read.
         func dataScanner(_ dataScanner: DataScannerViewController, didTapOn item: RecognizedItem) {
             if case .barcode(let barcode) = item, let payload = barcode.payloadStringValue {
-                onScan(payload)
+                onScan(payload, true)
             }
         }
     }

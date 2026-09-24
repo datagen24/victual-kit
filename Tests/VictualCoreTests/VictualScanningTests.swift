@@ -202,6 +202,23 @@ struct ScanResolutionTests {
         #expect(result.product?.id == 7)
     }
 
+    @Test("A barcode-side failure does not hide a label that resolved")
+    func labelSurvivesBarcodeFailure() async throws {
+        let resolved = """
+            {"status":"resolved","uid":"0123456789ABC","kind":"location",
+             "target":{"id":4,"name":"Top shelf","path":"Top shelf"}}
+            """
+        let client = VictualClient.stubbed(
+            scanTransport([
+                "/labels/resolve/": (200, resolved),
+                "/stock/products/by-barcode/": (500, #"{"error_message":"boom"}"#),
+            ]))
+
+        let result = try await client.resolveScan("vctl:0123456789ABC")
+
+        #expect(result == .location(LabelTarget(kind: .location, id: 4, name: "Top shelf")))
+    }
+
     @Test("A rejected key is an error, not an unknown code")
     func unauthorizedIsAnError() async throws {
         let client = VictualClient.stubbed(

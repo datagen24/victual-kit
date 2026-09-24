@@ -47,21 +47,26 @@ extension VictualClient {
         async let labelTask = labelOrNothing(code)
         async let productTask = productDetail(barcode: code)
         let label: LabelResolution
-        let product: ProductDetail?
         do {
             label = try await labelTask
-            product = try await productTask
         } catch {
             throw VictualError.mapping(error)
         }
 
+        // The barcode answer is only awaited when the label answer leaves room
+        // for it, so a failure on that side cannot hide a label that resolved.
+        // An abandoned `async let` is cancelled when this scope exits.
         switch label {
         case .resolved(_, let target):
             return try await scanResolution(for: target)
         case .retired(let retired):
             return .retiredLabel(retired)
         case .unknown:
-            return product.map(ScanResolution.product) ?? .unknown
+            do {
+                return try await productTask.map(ScanResolution.product) ?? .unknown
+            } catch {
+                throw VictualError.mapping(error)
+            }
         }
     }
 
