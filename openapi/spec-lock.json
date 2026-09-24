@@ -2,10 +2,10 @@
   "upstreamRepository": "https://github.com/datagen24/victual",
   "upstreamRef": "master",
   "upstreamPath": "victual.openapi.json",
-  "upstreamCommit": "5995cab9fe9c67c392a2a62e9cac8523a5b9d734",
-  "upstreamSha256": "8007f558357f8b38137de8d8fe5c38aaa8982721e75d8d62f1344b2de6cdfa3a",
-  "generatedSha256": "4c022e248db04f64f59763178d492be6ecabb2d5d33dbc364468677415050f3d",
-  "syncedAt": "2026-09-21T14:28:48Z",
+  "upstreamCommit": "38445d4f84c2c88c8ed8af622982340639a918d2",
+  "upstreamSha256": "d37bb3ffc1948292a5498c809b11bd9eb53d0191e9479da7e7900a6f56193ce2",
+  "generatedSha256": "ee9ac83887557c0b9e1ae1a54f87102c336f3e7b32a6809f861fabe149159d48",
+  "syncedAt": "2026-09-24T21:13:55Z",
   "normalizations": {
     "pathsRewritten": 0,
     "operationIdsAssigned": 145,
@@ -13,14 +13,8 @@
     "nullableKeywordsConverted": 0,
     "compositionConflictsResolved": 0,
     "danglingRefsRepaired": [],
-    "integerFlagsRetyped": [
-      "StockLogEntry.spoiled",
-      "StockJournal.spoiled",
-      "CurrentStockResponse.is_aggregated_amount"
-    ],
+    "integerFlagsRetyped": [],
     "serverPlaceholderReplaced": true,
-    "upstreamIssuesLeftInPlace": [
-      "paths//user/get/responses/200/content/application/json/schema: declared `object` but carries `items`; generated as a free-form object rather than the referenced type"
-    ]
+    "upstreamIssuesLeftInPlace": []
   }
 }

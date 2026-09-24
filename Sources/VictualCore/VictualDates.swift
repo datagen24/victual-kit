@@ -1,19 +1,22 @@
 import Foundation
 import OpenAPIRuntime
 
-/// How this package reads and writes the two date shapes Victual puts on the wire.
+/// How this package reads and writes the date shapes Victual puts on the wire.
 ///
 /// The server renders timestamps the way its database stores them — `"2019-05-03
-/// 18:24:04"`, a space instead of a `T` and no offset — while the specification
-/// types those fields `format: date-time`. A strict ISO 8601 reader rejects them,
-/// so `row_created_timestamp` alone would fail every stock-entry read.
-/// [ADR-0005](https://github.com/datagen24/victual/blob/master/docs/adr/0005-wire-contract-is-the-invariant.md)
-/// documents that rendering as an accepted exception; this is where the package
-/// absorbs it, once, so no caller has to.
+/// 18:24:04"`, a local wall-clock value with a space instead of a `T` and no
+/// offset. Since Victual 0.2.0-MVP the specification says so: those fields are
+/// plain strings with a `pattern`, not `format: date-time`
+/// ([ADR-0027](https://github.com/datagen24/victual/blob/master/docs/adr/0027-timestamps-are-local-strings-documented-booleans-are-booleans.md)),
+/// so they generate as `Swift.String` and are parsed here by ``timestamp(_:)``
+/// at the mapping boundary. Day-only fields (`format: date`) also generate as
+/// `Swift.String` and are parsed by ``day(_:)``; they are tolerated with a
+/// `" 00:00:00"` suffix.
 ///
-/// Day-only fields (`format: date`) generate as `Swift.String` rather than
-/// `Foundation.Date`, so they are parsed here explicitly by ``day(_:)`` at the
-/// mapping boundary. They too are tolerated with a `" 00:00:00"` suffix.
+/// The few fields still typed `format: date-time` (label evidence
+/// `observed_at`) go through ``transcoder``, which reads ISO 8601 and the
+/// database renderings alike, so an older server that still declared the local
+/// fields `date-time` decodes too.
 ///
 /// Both readers interpret a zone-less value in
 /// `TimeZone.autoupdatingCurrent`. A due date is a household's calendar day, not
@@ -29,6 +32,17 @@ public enum VictualDates {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
         return formatters.parse(trimmed, using: dayFormats)
+    }
+
+    /// Parses a local timestamp field — `"YYYY-MM-DD HH:MM:SS"` in the server's
+    /// zone — or the ISO 8601 form.
+    ///
+    /// Returns `nil` for a missing or empty value, or one that matches neither.
+    public static func timestamp(_ text: String?) -> Date? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        return try? VictualDateTranscoder().decode(trimmed)
     }
 
     /// Renders a calendar day as the `YYYY-MM-DD` the API expects in a request body.

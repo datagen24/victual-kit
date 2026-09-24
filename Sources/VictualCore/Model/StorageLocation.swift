@@ -47,11 +47,10 @@ public struct StorageLocation: Hashable, Sendable, Identifiable, Codable {
 }
 
 extension StorageLocation {
-    init?(_ schema: Components.Schemas.Location) {
-        guard let id = schema.id else { return nil }
+    init(_ schema: Components.Schemas.Location) {
         self.init(
-            id: id,
-            name: schema.name ?? "",
+            id: schema.id,
+            name: schema.name,
             details: schema.description,
             parentID: schema.parentLocationId
         )

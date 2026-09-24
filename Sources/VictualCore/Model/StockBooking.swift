@@ -122,14 +122,14 @@ extension StockLogRow {
             transactionType: schema.transactionType.map(StockTransactionKind.init),
             // `integer` 0/1 on the wire, like every other flag this API sends;
             // the document said `boolean` and `Scripts/update-openapi.py` repairs it.
-            spoiled: .fromWireFlag(schema.spoiled),
+            spoiled: schema.spoiled ?? false,
             stockID: schema.stockId,
             price: schema.price,
             note: schema.note,
             bestBeforeDate: VictualDates.day(schema.bestBeforeDate),
             purchasedDate: VictualDates.day(schema.purchasedDate),
             usedDate: VictualDates.day(schema.usedDate),
-            createdAt: schema.rowCreatedTimestamp
+            createdAt: VictualDates.timestamp(schema.rowCreatedTimestamp)
         )
     }
 }

@@ -46,11 +46,10 @@ public struct QuantityUnit: Hashable, Sendable, Identifiable, Codable {
 }
 
 extension QuantityUnit {
-    init?(_ schema: Components.Schemas.QuantityUnit) {
-        guard let id = schema.id else { return nil }
+    init(_ schema: Components.Schemas.QuantityUnit) {
         self.init(
-            id: id,
-            name: schema.name ?? "",
+            id: schema.id,
+            name: schema.name,
             namePlural: schema.namePlural,
             details: schema.description
         )

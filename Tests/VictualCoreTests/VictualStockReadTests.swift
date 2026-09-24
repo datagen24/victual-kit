@@ -114,16 +114,15 @@ struct WireDateTests {
         #expect(VictualDates.day(text) == nil)
     }
 
-    /// The reason this package installs its own transcoder at all.
-    ///
-    /// The specification types `row_created_timestamp` as `format: date-time`,
-    /// which generates a `Foundation.Date` decoded as strict ISO 8601 — but the
-    /// server renders it the way its database stores it, with a space and no
-    /// offset. Without the transcoder every stock-entry read fails outright.
+    /// The server renders `row_created_timestamp` the way its database stores
+    /// it, with a space and no offset. Until Victual 0.2.0-MVP the specification
+    /// typed it `format: date-time`, and without a lenient reader every
+    /// stock-entry read failed outright; it is now a patterned string, parsed at
+    /// the mapping boundary by ``VictualDates/timestamp(_:)``.
     @Test("A timestamp in the server's own rendering decodes")
     func decodesDatabaseTimestamps() async throws {
         let body = """
-            [{"id": 77, "product_id": 7, "amount": 1,
+            [{"id": 77, "stock_id": "s", "product_id": 7, "amount": 1,
               "row_created_timestamp": "2019-05-03 18:24:04"}]
             """
         let client = VictualClient.stubbed(StubTransport(status: 200, json: body))
@@ -136,7 +135,8 @@ struct WireDateTests {
     @Test("An ISO 8601 timestamp still decodes")
     func decodesISOTimestamps() async throws {
         let body = """
-            [{"id": 77, "row_created_timestamp": "2019-05-03T18:24:04Z"}]
+            [{"id": 77, "stock_id": "s", "product_id": 7,
+              "row_created_timestamp": "2019-05-03T18:24:04Z"}]
             """
         let client = VictualClient.stubbed(StubTransport(status: 200, json: body))
 

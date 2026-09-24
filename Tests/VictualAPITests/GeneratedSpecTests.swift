@@ -93,7 +93,7 @@ struct GeneratedSpecTests {
         let json = Data(
             """
             {"product_id": 7, "amount": 2.5, "amount_aggregated": 4.0,
-             "best_before_date": "2026-01-31", "is_aggregated_amount": 0}
+             "best_before_date": "2026-01-31", "is_aggregated_amount": false}
             """.utf8
         )
 
@@ -102,35 +102,36 @@ struct GeneratedSpecTests {
         #expect(stock.productId == 7)
         #expect(stock.amountAggregated == 4.0)
         #expect(stock.bestBeforeDate == "2026-01-31")
-        #expect(stock.isAggregatedAmount == 0)
+        #expect(stock.isAggregatedAmount == false)
     }
 
-    /// The 0/1 flags the document calls `boolean` and the server sends as
-    /// numbers, retyped by `Scripts/update-openapi.py`.
+    /// The flags the document calls `boolean` decode as booleans.
     ///
-    /// Confirmed against a live instance: without this, a `0` where `true` was
-    /// promised fails the whole response, so all five bookings throw *after* the
-    /// booking has already been written. `VictualCore` maps these back to `Bool`
-    /// at its own boundary.
-    @Test("Integer flags the document mistyped as boolean decode as numbers")
-    func integerFlagsRetyped() throws {
-        let booking = Data(#"[{"id": 1, "spoiled": 0, "transaction_id": "tx"}]"#.utf8)
+    /// Before Victual 0.2.0-MVP the server sent `stock_log.spoiled` as `0`/`1`
+    /// and `Scripts/update-openapi.py` retyped it to `integer`; without that, all
+    /// five bookings threw *after* the booking had been written. Issue #230 made
+    /// the server send `true`/`false` instead, so the retype was removed. This
+    /// pins that it stays removed: an `integer` here would refuse every booking
+    /// response again.
+    @Test("Documented boolean flags decode as booleans")
+    func documentedBooleansAreBooleans() throws {
+        let booking = Data(#"[{"id": 1, "spoiled": false, "transaction_id": "tx"}]"#.utf8)
         let rows = try decoder.decode([Components.Schemas.StockLogEntry].self, from: booking)
-        #expect(rows.first?.spoiled == 0)
+        #expect(rows.first?.spoiled == false)
 
-        let spoiledRow = Data(#"[{"id": 2, "spoiled": 1}]"#.utf8)
+        let spoiledRow = Data(#"[{"id": 2, "spoiled": true}]"#.utf8)
         #expect(
             try decoder.decode([Components.Schemas.StockLogEntry].self, from: spoiledRow)
-                .first?.spoiled == 1
+                .first?.spoiled == true
         )
     }
 
-    /// The control for the repair above: a field that really is a boolean
-    /// server-side stays one, so the retyping stayed surgical.
+    /// The control for the test above: fields that were booleans before issue
+    /// #230 stay booleans.
     ///
     /// `ProductDetailsResponse.has_childs` reaches the wire through `boolval()`,
     /// and `CurrentUserCapabilities.read_only` through a PHP comparison. Neither
-    /// is a raw column, and neither is listed for repair.
+    /// is a raw column, and neither was ever listed for repair.
     @Test("Fields that really are boolean were left alone")
     func genuineBooleansUntouched() throws {
         let detail = Data(#"{"has_childs": true, "stock_amount": 2}"#.utf8)

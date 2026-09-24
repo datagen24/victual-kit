@@ -267,16 +267,16 @@ def repair_dangling_refs(document: dict) -> list[str]:
 # typed `integer` (see `ProductWithoutUserfields`), so this makes the odd one out
 # consistent with its siblings rather than inventing a shape. Clients map it to a
 # real `Bool` at their own boundary.
-# Each entry below was confirmed against the server rather than guessed at:
-# `stock_log.spoiled` is an `integer` column, and `is_aggregated_amount` is
-# assigned a bare `0`/`1` in StockService.php. Fields that reach the wire through
-# `boolval()` -- `ProductDetailsResponse.has_childs` -- really are booleans and
-# are deliberately not listed.
-INTEGER_FLAGS_TYPED_AS_BOOLEAN = {
-    "StockLogEntry": ["spoiled"],
-    "StockJournal": ["spoiled"],
-    "CurrentStockResponse": ["is_aggregated_amount"],
-}
+#
+# Empty since Victual 0.2.0-MVP. Issue #230 moved the wire instead of the
+# document: `services/WireBooleans.php` now converts every property the document
+# types `boolean` -- `StockLogEntry.spoiled` and
+# `CurrentStockResponse.is_aggregated_amount` among them -- to `true`/`false`.
+# The entries that used to be here now do harm rather than good: retyped to
+# `integer`, they refuse the server's `false` and every booking fails to decode
+# again, which is the failure they were added to prevent. The mechanism stays so
+# a future mismatch has somewhere to go, confirmed against the server first.
+INTEGER_FLAGS_TYPED_AS_BOOLEAN: dict[str, list[str]] = {}
 
 
 def retype_integer_flags(document: dict) -> list[str]:
