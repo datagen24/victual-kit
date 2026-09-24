@@ -26,7 +26,7 @@ private func scanClient() -> (VictualClient, StubTransport) {
             if path.hasPrefix("/labels/resolve/") {
                 (200, #"{"status":"unknown"}"#)
             } else if path == "/stock/products/by-barcode/4006381333931" {
-                (200, #"{"product":{"id":7,"name":"Cookies"},"stock_amount":2}"#)
+                (200, #"{"product":{"id":7,"name":"Cookies","qu_id_stock":3},"stock_amount":2}"#)
             } else {
                 (400, #"{"error_message":"No product with that barcode"}"#)
             }

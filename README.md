@@ -115,10 +115,12 @@ Three rules are applied once, at that boundary, rather than at every call site:
   caller without `STOCK_PRICES_VIEW`. They stay optional and are never defaulted
   to zero. For the same reason the wrappers expose neither `query[]` nor `order`:
   naming a price field in either is answered `400` rather than applied.
-- **Dates are parsed leniently.** Victual renders `format: date-time` fields the
-  way its database stores them (`"2019-05-03 18:24:04"`), which a strict ISO 8601
-  reader rejects. `VictualDates` installs a transcoder that reads both, and does
-  the same for the `" 00:00:00"` suffix ADR-0005 documents on day fields.
+- **Dates are parsed leniently.** Victual renders timestamps the way its
+  database stores them (`"2019-05-03 18:24:04"`), which a strict ISO 8601 reader
+  rejects. Since upstream ADR-0027 the specification types them as plain
+  strings; `VictualDates.timestamp(_:)` reads that rendering, ISO 8601, and the
+  PostgreSQL `TIMESTAMPTZ` form label fields such as `retired_at` use. The same
+  lenience covers the `" 00:00:00"` suffix ADR-0005 documents on day fields.
 - **`integer` 0/1 flags become `Bool`.**
 
 ### Errors
@@ -208,7 +210,7 @@ change surfaces as a failing job rather than as drift.
 Victual's document is generated from Slim/PHP routes and did not load in
 swift-openapi-generator as published.
 
-As of upstream commit `5995cab` only repair 2 and repair 6 still do anything —
+As of upstream commit `e004850` only repair 2 and repair 6 still do anything —
 the sync report in `openapi/spec-lock.json` shows `pathsRewritten`,
 `danglingRefsRepaired`, `nullableKeywordsConverted` and
 `compositionConflictsResolved` all at zero, because upstream now publishes those
@@ -244,13 +246,13 @@ guard against a regression tomorrow, and it costs nothing to leave standing.
 
 ### Known upstream issues left in place
 
-These change what the API *says* it returns, so repairing them would mean
-guessing at the contract. They are recorded in `openapi/spec-lock.json` under
-`upstreamIssuesLeftInPlace` and are worth reporting upstream:
+None as of upstream commit `e004850`. Any that appear are recorded in
+`openapi/spec-lock.json` under `upstreamIssuesLeftInPlace` and are worth
+reporting upstream: they change what the API *says* it returns, so repairing
+them here would mean guessing at the contract.
 
-- `GET /user` types its 200 response as `{"type": "object", "items": {"$ref":
-  ".../UserDto"}}`. `items` is meaningless on an object, so the response
-  generates as a free-form `OpenAPIObjectContainer` instead of `UserDto`.
+`GET /user`, the last one, was fixed upstream: its 200 response used to carry
+`items` on an `object` and generated as a free-form container.
 
 ## Development
 

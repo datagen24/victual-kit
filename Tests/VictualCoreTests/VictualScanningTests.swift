@@ -135,7 +135,7 @@ struct ScanResolutionTests {
     func retiredLabel() async throws {
         let retired = """
             {"status":"retired","uid":"0123456789ABC","kind":"location",
-             "snapshot":{"id":4,"name":"Old freezer"},"retired_at":"2026-09-01 10:00:00"}
+             "snapshot":{"id":4,"name":"Old freezer"},"retired_at":"2026-09-01 10:00:00.123456+00"}
             """
         let client = VictualClient.stubbed(
             scanTransport([
@@ -152,7 +152,24 @@ struct ScanResolutionTests {
         #expect(label.kind == .location)
         #expect(label.formerName == "Old freezer")
         #expect(label.formerID == 4)
-        #expect(label.retiredAt != nil)
+        // PostgreSQL's TIMESTAMPTZ rendering, which ADR-0027 names as an
+        // exception for label fields: an offset, and fractional seconds.
+        #expect(label.retiredAt == Date(timeIntervalSince1970: 1_788_256_800))
+    }
+
+    @Test("Timestamps read in every rendering the server documents", arguments: [
+        ("2026-09-01 10:00:00+00", 1_788_256_800.0),
+        ("2026-09-01 10:00:00.5+00", 1_788_256_800.0),
+        ("2026-09-01 15:30:00+05:30", 1_788_256_800.0),
+        ("2026-09-01T10:00:00Z", 1_788_256_800.0),
+    ])
+    func timestampRenderings(text: String, epoch: Double) {
+        #expect(VictualDates.timestamp(text) == Date(timeIntervalSince1970: epoch))
+    }
+
+    @Test("An absent or unreadable timestamp is nil", arguments: [nil, "", "yesterday"] as [String?])
+    func unreadableTimestamps(text: String?) {
+        #expect(VictualDates.timestamp(text) == nil)
     }
 
     @Test("A label on something without a stock screen is reported, not dropped")

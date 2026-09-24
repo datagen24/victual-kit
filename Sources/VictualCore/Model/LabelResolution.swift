@@ -140,7 +140,7 @@ extension LabelResolution {
                     kind: LabelKind(wire: retired.kind.value as? String ?? ""),
                     formerID: retired.snapshot.id,
                     formerName: retired.snapshot.name,
-                    retiredAt: try? VictualDates.transcoder.decode(retired.retiredAt)
+                    retiredAt: VictualDates.timestamp(retired.retiredAt)
                 )
             )
         }

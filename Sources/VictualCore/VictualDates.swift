@@ -31,6 +31,26 @@ public enum VictualDates {
         return formatters.parse(trimmed, using: dayFormats)
     }
 
+    /// Parses a timestamp field — `row_created_timestamp`, `changed_time` and
+    /// the like — which since upstream ADR-0027 the specification types as a
+    /// plain string rather than `format: date-time`.
+    ///
+    /// Reads everything ``transcoder`` reads, and additionally the PostgreSQL
+    /// `TIMESTAMPTZ` rendering — `"2026-09-01 10:00:00.123456+00"`, a UTC offset
+    /// and optional fractional seconds — which ADR-0027 names as an exception
+    /// for label fields such as `retired_at`. Fractional seconds are dropped:
+    /// nothing here displays or compares below a second. Returns `nil` for an
+    /// absent, empty or unreadable value.
+    public static func timestamp(_ text: String?) -> Date? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        if let date = try? transcoder.decode(trimmed) { return date }
+        let withoutFraction = trimmed.replacingOccurrences(
+            of: #"(:\d{2})\.\d+"#, with: "$1", options: .regularExpression)
+        return formatters.parse(withoutFraction, using: zonedFormats)
+    }
+
     /// Renders a calendar day as the `YYYY-MM-DD` the API expects in a request body.
     public static func string(fromDay date: Date) -> String {
         formatters.string(from: date, using: "yyyy-MM-dd")
@@ -46,6 +66,9 @@ public enum VictualDates {
     fileprivate static let timestampFormats = [
         "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd",
     ]
+    /// PostgreSQL's `TIMESTAMPTZ` output: an offset of `+HH`, or `+HH:MM` for a
+    /// zone off the hour.
+    private static let zonedFormats = ["yyyy-MM-dd HH:mm:ssX", "yyyy-MM-dd HH:mm:ssXXX"]
     fileprivate static let formatters = FormatterCache()
 }
 

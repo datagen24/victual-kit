@@ -129,7 +129,7 @@ extension StockLogRow {
             bestBeforeDate: VictualDates.day(schema.bestBeforeDate),
             purchasedDate: VictualDates.day(schema.purchasedDate),
             usedDate: VictualDates.day(schema.usedDate),
-            createdAt: schema.rowCreatedTimestamp
+            createdAt: VictualDates.timestamp(schema.rowCreatedTimestamp)
         )
     }
 }
