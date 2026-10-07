@@ -179,7 +179,7 @@ extension VictualClient {
         } unwrap: { output in
             switch output {
             case .ok(let response):
-                guard let changed = VictualDates.timestamp(try response.body.json.changedTime) else {
+                guard let changed = try response.body.json.changedTime else {
                     throw VictualError.decodingFailed(underlying: MissingChangedTime())
                 }
                 return changed

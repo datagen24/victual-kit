@@ -18,7 +18,12 @@ struct RootView: View {
         Group {
             if session.state.isConnected, let workspace {
                 InventoryView(workspace: workspace)
-                    .safeAreaInset(edge: .top) { credentialWarning }
+                    .safeAreaInset(edge: .top) {
+                        VStack(spacing: 0) {
+                            ServerVersionBanner(session: session)
+                            credentialWarning
+                        }
+                    }
             } else if session.state.isConnected {
                 // Connected, but the workspace has not been built yet — one
                 // frame at most.

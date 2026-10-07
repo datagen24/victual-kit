@@ -108,8 +108,8 @@ extension StockEntry {
             openedAmount: schema.openedAmount,
             openedQuantityUnitID: schema.openedQuId,
             openedTare: schema.openedTare,
-            openedMeasuredAt: VictualDates.timestamp(schema.openedMeasuredAt),
-            createdAt: VictualDates.timestamp(schema.rowCreatedTimestamp)
+            openedMeasuredAt: schema.openedMeasuredAt,
+            createdAt: schema.rowCreatedTimestamp
         )
     }
 }

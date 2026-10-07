@@ -68,7 +68,12 @@ private struct MainTabs: View {
                 SettingsScreen(session: session)
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) { credentialWarning }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                ServerVersionBanner(session: session)
+                credentialWarning
+            }
+        }
         .task { await workspace.start() }
         .sheet(item: Bindable(workspace).presentedBooking) { presentation in
             BookingForm(presentation: presentation, workspace: workspace)

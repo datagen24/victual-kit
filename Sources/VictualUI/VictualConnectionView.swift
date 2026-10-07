@@ -84,6 +84,10 @@ public struct VictualConnectionView: View {
         case .connected(let information):
             Section {
                 LabeledContent("Victual", value: information.victualVersion ?? "unknown")
+                if let warning = information.versionWarning {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
                 if let engine = information.databaseEngine {
                     LabeledContent("Database", value: engine)
                 }

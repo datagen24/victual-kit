@@ -24,10 +24,11 @@ than a runtime surprise.
 
 - Swift 6.0, and macOS 14 / iOS 17 / iPadOS 17 / tvOS 17 / watchOS 10 / visionOS 1. The
   floor is set by the Observation framework, which `VictualSession` uses.
-- A Victual server at **0.2.0-MVP or later**. That release changed how timestamps are
-  documented and made the server send its documented booleans as `true`/`false`
-  ([issue #230](https://github.com/datagen24/victual/issues/230)). The package follows
-  the new contract, and a booking response from an older server does not decode.
+- A Victual server at **0.3.0**. That release sends every timestamp as RFC 3339 in UTC
+  (`2026-10-04T18:30:00.000000Z`, [ADR-0027](https://github.com/datagen24/victual/blob/master/docs/adr/0027-timestamps-are-local-strings-documented-booleans-are-booleans.md)
+  decision 2) and types those fields `format: date-time`. The package follows that
+  contract and has not been run against an older server. The 0.2.0-MVP booleans change
+  ([issue #230](https://github.com/datagen24/victual/issues/230)) still applies.
 
 ## Installation
 
@@ -115,17 +116,13 @@ Three rules are applied once, at that boundary, rather than at every call site:
   caller without `STOCK_PRICES_VIEW`. They stay optional and are never defaulted
   to zero. For the same reason the wrappers expose neither `query[]` nor `order`:
   naming a price field in either is answered `400` rather than applied.
-- **Timestamps are parsed from the server's own rendering.** Victual renders a timestamp
-  as a local wall-clock value, `"2019-05-03 18:24:04"`, which is not RFC 3339. Since
-  0.2.0-MVP the specification says so
-  ([ADR-0027](https://github.com/datagen24/victual/blob/master/docs/adr/0027-timestamps-are-local-strings-documented-booleans-are-booleans.md)),
-  and those fields generate as strings. `VictualDates.timestamp(_:)` reads that rendering,
-  ISO 8601, and the PostgreSQL `TIMESTAMPTZ` form that label fields such as `retired_at`
-  use. `VictualDates.day(_:)` reads calendar days, with or without a `" 00:00:00"` suffix.
-- **Timestamps are read in the instance's time zone.** A timestamp without an offset is the
-  server's local time, so `verifyConnection()` learns the zone from `GET /system/time` and
-  every copy of the client reads such timestamps in it. One that states an offset keeps
-  it. Calendar days (`best_before_date`) are not instants and stay in the device's zone.
+- **Timestamps are instants.** Since 0.3.0 Victual sends every timestamp as RFC 3339 in
+  UTC with six fractional digits, and the specification types those fields
+  `format: date-time`, so they generate as `Date` and the client's transcoder reads them.
+  The transcoder still accepts the older space-separated rendering, read in the instance's
+  zone, which `verifyConnection()` learns from `GET /system/time`.
+  `VictualDates.day(_:)` reads calendar days (`best_before_date`), with or without a
+  `" 00:00:00"` suffix; a day is not an instant and stays in the device's zone.
 - **`integer` 0/1 flags become `Bool`.** Flags the document types `boolean` already
   arrive as booleans.
 

@@ -135,7 +135,7 @@ struct ScanResolutionTests {
     func retiredLabel() async throws {
         let retired = """
             {"status":"retired","uid":"0123456789ABC","kind":"location",
-             "snapshot":{"id":4,"name":"Old freezer"},"retired_at":"2026-09-01 10:00:00.123456+00"}
+             "snapshot":{"id":4,"name":"Old freezer"},"retired_at":"2026-09-01T10:00:00.123456Z"}
             """
         let client = VictualClient.stubbed(
             scanTransport([
@@ -152,9 +152,34 @@ struct ScanResolutionTests {
         #expect(label.kind == .location)
         #expect(label.formerName == "Old freezer")
         #expect(label.formerID == 4)
-        // PostgreSQL's TIMESTAMPTZ rendering, which ADR-0027 names as an
-        // exception for label fields: an offset, and fractional seconds.
-        #expect(label.retiredAt == Date(timeIntervalSince1970: 1_788_256_800))
+        // RFC 3339 in UTC with six fractional digits, as 0.3.0 sends every instant.
+        let retiredAt = try #require(label.retiredAt)
+        #expect(abs(retiredAt.timeIntervalSince1970 - 1_788_256_800.123456) < 0.001)
+    }
+
+    @Test("A retired stock-entry label reports the product it was on")
+    func retiredStockEntryLabel() async throws {
+        let retired = """
+            {"status":"retired","uid":"0123456789ABC","kind":"stock_entry",
+             "snapshot":{"id":77,"product_name":null,"best_before_date":"2026-10-01","amount":2},
+             "retired_at":"2026-09-01T10:00:00.000000Z"}
+            """
+        let client = VictualClient.stubbed(
+            scanTransport([
+                "/labels/resolve/": (200, retired),
+                "/stock/products/by-barcode/": (400, unknownBarcode),
+            ]))
+
+        let result = try await client.resolveScan("vctl:0123456789ABC")
+
+        guard case .retiredLabel(let label) = result else {
+            Issue.record("expected a retired label, got \(result)")
+            return
+        }
+        #expect(label.kind == .stockEntry)
+        #expect(label.formerID == 77)
+        // Null when the entry was retired by deleting its product.
+        #expect(label.formerName == nil)
     }
 
     @Test("Timestamps read in every rendering the server documents", arguments: [
@@ -175,8 +200,8 @@ struct ScanResolutionTests {
     @Test("A label on something without a stock screen is reported, not dropped")
     func otherKindLabel() async throws {
         let resolved = """
-            {"status":"resolved","uid":"0123456789ABC","kind":"houseplant",
-             "target":{"id":3,"name":"Fern","path":"Fern"}}
+            {"status":"resolved","uid":"0123456789ABC","kind":"recipe",
+             "target":{"id":3,"name":"Soup","path":"Soup"}}
             """
         let client = VictualClient.stubbed(
             scanTransport([
@@ -187,7 +212,7 @@ struct ScanResolutionTests {
         let result = try await client.resolveScan("vctl:0123456789ABC")
 
         #expect(
-            result == .otherLabel(LabelTarget(kind: .other("houseplant"), id: 3, name: "Fern")))
+            result == .otherLabel(LabelTarget(kind: .recipe, id: 3, name: "Soup")))
     }
 
     @Test("An instance without label resolution still resolves barcodes")

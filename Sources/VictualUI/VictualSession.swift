@@ -70,6 +70,16 @@ public final class VictualSession {
     /// actually walks.
     public private(set) var connectionGeneration: Int = 0
 
+    /// Set when the connected server is newer than this app was built for.
+    ///
+    /// Apart from ``state`` because it is not a failure: the session works, and
+    /// most of it will keep working. It is the only warning that outlives the
+    /// connection form.
+    public var serverVersionWarning: String? {
+        if case .connected(let information) = state { return information.versionWarning }
+        return nil
+    }
+
     /// The most recent credential-store failure, if any.
     ///
     /// Kept apart from ``state`` because it is not fatal: a session whose key

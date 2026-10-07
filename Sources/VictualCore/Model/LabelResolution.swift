@@ -80,9 +80,7 @@ public struct RetiredLabel: Hashable, Sendable {
     /// server recorded them.
     public var formerID: Int?
     public var formerName: String?
-    /// When the label was retired, parsed leniently; `nil` if the server's
-    /// rendering could not be read, which does not make the label any less
-    /// retired.
+    /// When the label was retired.
     public var retiredAt: Date?
 
     public init(
@@ -114,16 +112,16 @@ extension LabelResolution {
 
     /// Maps the generated union.
     ///
-    /// The three cases are told apart by their required keys, which is how the
-    /// generator decodes them. `status` and `kind` are `const` in the
-    /// specification and arrive as untyped containers, so they are read as
-    /// strings here.
+    /// The four cases are told apart by their required keys, which is how the
+    /// generator decodes them. `status` is a `const` and arrives as an untyped
+    /// container; `kind` is an enum, one per case because a retired stock entry
+    /// carries a different snapshot from the other retired kinds.
     init(_ payload: Payload) {
         switch payload {
         case .case1:
             self = .unknown
         case .case2(let resolved):
-            let kind = LabelKind(wire: resolved.kind.value as? String ?? "")
+            let kind = LabelKind(wire: resolved.kind.rawValue)
             self = .resolved(
                 uid: resolved.uid,
                 target: LabelTarget(
@@ -137,10 +135,22 @@ extension LabelResolution {
             self = .retired(
                 RetiredLabel(
                     uid: retired.uid,
-                    kind: LabelKind(wire: retired.kind.value as? String ?? ""),
+                    kind: LabelKind(wire: retired.kind.rawValue),
                     formerID: retired.snapshot.id,
                     formerName: retired.snapshot.name,
-                    retiredAt: VictualDates.timestamp(retired.retiredAt)
+                    retiredAt: retired.retiredAt
+                )
+            )
+        case .case4(let retired):
+            // The product's name at retirement; null when the entry was retired
+            // by deleting its product.
+            self = .retired(
+                RetiredLabel(
+                    uid: retired.uid,
+                    kind: .stockEntry,
+                    formerID: retired.snapshot.id,
+                    formerName: retired.snapshot.productName,
+                    retiredAt: retired.retiredAt
                 )
             )
         }

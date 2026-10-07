@@ -2,8 +2,8 @@
 	"openapi": "3.1.0",
 	"info": {
 		"title": "Victual REST API",
-		"description": "Authentication is done via API keys (header *VICTUAL-API-KEY* or same named query parameter), which you can manage [here](PlaceHolderManageApiKeysUrl).<br>Additionally requests from within the frontend are also valid (via session cookie).<br><br>**Dates and times.** Except for the three renderings ADR-0027 decision 2 names - *observed_at* on the label evidence endpoint (RFC 3339), *time_utc* on the system time endpoint (the local shape, but in UTC), and the label surface's TIMESTAMPTZ columns such as *retired_at* (a UTC offset, and fractional seconds when the column holds them) - every date and time this API renders or accepts is a local wall-clock value in the server's configured time zone, written as `YYYY-MM-DD HH:MM:SS` - no `T` separator and no UTC offset, because it is what PostgreSQL renders for a TIMESTAMP column. It is therefore **not** RFC 3339, and these fields are deliberately not typed *format: date-time*: they were, and a generated client decoding them with a strict RFC 3339 reader failed on the whole response. Fields whose column is a SQL DATE carry *format: date* and are plain `YYYY-MM-DD`, which is valid RFC 3339. The three write fields in this family - *tracked_time* on chore execution and battery charge, *done_time* on task completion - accept that rendering, a bare `YYYY-MM-DD` date meaning its midnight, and the RFC 3339-shaped `T` form - where the offset is optional, unlike RFC 3339 itself, and a leap second `:60` is refused - which is converted to the server's zone and stored in the rendering above. Omit one of them to record the current time; send a value that is none of those and the request is refused with **400** naming the field. They were **silently ignored** when they did not match, and the current time was booked instead: issue #231 documented that, ADR-0028 ended it.",
-		"version": "0.2.0-MVP",
+		"description": "Authentication is done via API keys (header *VICTUAL-API-KEY* or same named query parameter), which you can manage [here](PlaceHolderManageApiKeysUrl).<br>Additionally requests from within the frontend are also valid (via session cookie).<br><br>**Dates and times.** Every instant this API stores or sends is RFC 3339 in UTC with exactly six fractional digits - `2026-10-04T18:30:00.000000Z` - typed *format: date-time* (ADR-0027 decision 2, issue #650). The fixed width is part of the contract: text order is chronological order, so two values may be compared as strings. The one exception is *time_local* on the system time endpoint, the same instant with the server's offset (`2026-10-04T14:30:00.000000-04:00`). Fields whose column is a SQL DATE are calendar dates, typed *format: date* and written `YYYY-MM-DD`; they are never converted between zones. Days the server computes - due today, overdue, expiring in N days - are days in the server's configured time zone. A value sent without an offset - to the three write fields *tracked_time* and *done_time*, to a generic entity write, or as a `query[]` comparison - is a wall clock in the server's configured zone: a repeated hour names the earlier instant, and a skipped hour is refused with **400**. Send an offset to name any instant unambiguously. These values were local wall clocks in the server's zone, `YYYY-MM-DD HH:MM:SS`, until migration 0301 converted them.",
+		"version": "0.3.0",
 		"license": {
 			"name": "MIT (code originating from upstream grocy) AND BSD-3-Clause (Victual)",
 			"url": "https://github.com/datagen24/victual/blob/master/LICENSE.md"
@@ -65,7 +65,7 @@
 					"Labels"
 				],
 				"summary": "Resolve an opaque label",
-				"description": "Accepts a bare uid or vctl: payload, ignoring case and folding I/L to 1 and O to 0. STOCK_VIEW authorizes location labels. Unauthorized and unknown labels both return 200 with status unknown; a denied caller performs no label lookup. No other entity kind is resolved in this release.",
+				"description": "Accepts a bare uid or vctl: payload, ignoring case and folding I/L to 1 and O to 0. Each kind resolves under the caller's domain permission (FieldCatalogue::DomainPermission): STOCK_VIEW for location, product, and stock_entry; RECIPES_VIEW for recipe; CHORES_VIEW for chore; BATTERIES for battery. Unauthorized and unknown labels both return 200 with status unknown; a caller holding none of these permissions performs no label lookup.",
 				"parameters": [
 					{
 						"name": "code",
@@ -112,7 +112,15 @@
 													"pattern": "^[0-9A-F][0-9A-HJKMNP-TV-Z]{12}$"
 												},
 												"kind": {
-													"const": "location"
+													"type": "string",
+													"enum": [
+														"location",
+														"product",
+														"stock_entry",
+														"recipe",
+														"chore",
+														"battery"
+													]
 												},
 												"target": {
 													"type": "object",
@@ -123,13 +131,16 @@
 													],
 													"properties": {
 														"id": {
-															"type": "integer"
+															"type": "integer",
+															"description": "Row id: for stock_entry, this is stock.id (the row that GET /api/stock/entry/{entryId} takes), not the stock_id string"
 														},
 														"name": {
-															"type": "string"
+															"type": "string",
+															"description": "Name of the target entity; for stock_entry, this is the product's current name, read live rather than captured - unlike the retired snapshot's product_name, it changes if the product is later renamed"
 														},
 														"path": {
-															"type": "string"
+															"type": "string",
+															"description": "A location's tree path; for the other five kinds, mirrors name"
 														}
 													}
 												}
@@ -154,7 +165,14 @@
 													"pattern": "^[0-9A-F][0-9A-HJKMNP-TV-Z]{12}$"
 												},
 												"kind": {
-													"const": "location"
+													"type": "string",
+													"enum": [
+														"location",
+														"product",
+														"recipe",
+														"chore",
+														"battery"
+													]
 												},
 												"snapshot": {
 													"type": "object",
@@ -164,16 +182,83 @@
 													],
 													"properties": {
 														"id": {
-															"type": "integer"
+															"type": "integer",
+															"description": "Row id of the retired entity"
 														},
 														"name": {
-															"type": "string"
+															"type": "string",
+															"description": "Name at retirement time"
 														}
 													}
 												},
 												"retired_at": {
 													"type": "string",
-													"description": "When the label was retired, as PostgreSQL renders the `labels.retired_at` `TIMESTAMPTZ` it is read straight out of: \"YYYY-MM-DD HH:MM:SS[.ffffff]±HH\" - a UTC offset, and fractional seconds when the column holds them. Neither the local rendering the rest of this document describes nor RFC 3339, so it carries no `pattern` and no `format`. One of the exceptions ADR-0027 decision 2 enumerates; a strict client should read it as an opaque string."
+													"format": "date-time",
+													"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+													"description": "When the label was retired. An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
+												}
+											},
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"required": [
+												"status",
+												"uid",
+												"kind",
+												"snapshot",
+												"retired_at"
+											],
+											"properties": {
+												"status": {
+													"const": "retired"
+												},
+												"uid": {
+													"type": "string",
+													"pattern": "^[0-9A-F][0-9A-HJKMNP-TV-Z]{12}$"
+												},
+												"kind": {
+													"const": "stock_entry"
+												},
+												"snapshot": {
+													"type": "object",
+													"required": [
+														"id",
+														"product_name",
+														"best_before_date",
+														"amount"
+													],
+													"properties": {
+														"id": {
+															"type": "integer",
+															"description": "Row id of the retired stock entry: stock.id, the row GET /api/stock/entry/{entryId} takes, not the stock_id string"
+														},
+														"product_name": {
+															"type": [
+																"string",
+																"null"
+															],
+															"description": "The product's name at retirement time, captured rather than read live; null when the entry was retired by deleting its product (issue #558); an entry retired earlier keeps its name even if the product is deleted afterwards"
+														},
+														"best_before_date": {
+															"type": [
+																"string",
+																"null"
+															],
+															"format": "date",
+															"description": "The stock entry's best_before_date at retirement time"
+														},
+														"amount": {
+															"type": "number",
+															"description": "The stock entry's amount at retirement time"
+														}
+													}
+												},
+												"retired_at": {
+													"type": "string",
+													"format": "date-time",
+													"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+													"description": "When the label was retired. An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 												}
 											},
 											"additionalProperties": false
@@ -960,7 +1045,7 @@
 			},
 			"delete": {
 				"summary": "Deletes a single object of the given entity",
-				"description": "Deleting a location with child locations or any stock is refused with HTTP 400. Move or consume stock before deleting its location.",
+				"description": "Deleting a location with child locations or any stock is refused with HTTP 400. Move or consume stock before deleting its location. Deleting any object still referenced by another object through an enforced foreign key - for example a product or a location named by a location's minimum stock, or a storage class or quantity unit set on a location - is refused the same way, leaving both objects unchanged.",
 				"tags": [
 					"Generic entity interactions"
 				],
@@ -1561,7 +1646,7 @@
 						"description": "The operation was successful"
 					},
 					"400": {
-						"description": "The operation was not successful",
+						"description": "The operation was not successful - Changing your own password, or a must_change_password-flagged account's own forced rotation to it: the current password (current_password or current_password_base64) was missing, empty or did not match. A flagged self-edit sent no new password, or one identical to the current one. first_name, last_name, password, current_password or picture_file_name was present and not a string. See this operation's own description for exactly when each applies.",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -1581,7 +1666,7 @@
 						}
 					},
 					"403": {
-						"description": "The authenticated user lacks a permission this operation requires",
+						"description": "The authenticated user lacks a permission this operation requires, or is a must_change_password-flagged account whose self-edit asked to change anything besides its own password",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -1591,6 +1676,7 @@
 						}
 					}
 				},
+				"description": "Requires USERS_EDIT to edit another user, or USERS_EDIT_SELF to edit your own account - except a must_change_password-flagged account editing itself, which needs neither permission (issue #514): the flag alone authorizes it to change its own password, with the correct current_password, and nothing else in the same request. On this flagged path only, an omitted username, first_name, last_name or picture_file_name defaults to its stored value - the 403 refusal below is about a field that is present and different, not about which fields happen to be sent at all, so a request that sends only the new password and current_password (what this same route's own 403 body, when the flag is still set, recommends) is exactly as valid as one that resubmits every field unchanged. A flagged self-edit that sends no new password, or its current password again, is refused with 400 before anything else is checked. One that does send a new password but also sends a username, first_name, last_name or picture_file_name that differs from what is stored is refused with 403, the same answer a missing permission gets - this is an authorization refusal, not a data one, and applies whether or not a current password was also supplied.\n\nChanging your own password - flagged or not - additionally requires the current one, sent as current_password (or current_password_base64). A password change that succeeds revokes every other session already open on the account (issue #513): when the account being changed is also the acting one and was not flagged, the session that made the request is spared; when it was flagged, every session on the account is revoked, including the one that made the request, and a freshly minted session cookie replaces it.",
 				"operationId": "putUsersByUserId"
 			},
 			"delete": {
@@ -2243,46 +2329,94 @@
 						"application/json": {
 							"schema": {
 								"type": "object",
+								"description": "amount is required. Every other property is optional: a property whose key is absent from the body keeps the entry's current value, resolved against the entry as it is at the moment of the edit rather than as it was when the request was formed. A property that is present must be readable as the type documented below, or as the additional numeric-string forms price and shopping_location_id's own descriptions name, or the request is refused with 400 and nothing about the entry changes. price, shopping_location_id and note additionally accept an explicit null to clear the field, since an absent key keeps it instead; price and shopping_location_id also accept \"\" for the same reason - for shopping_location_id this matches the web form's own \"no store\" option. best_before_date, location_id, purchased_date and open are not nullable.",
 								"properties": {
 									"amount": {
 										"type": "number",
-										"description": "The new amount"
+										"description": "The entry's new amount. A negative amount is refused; zero is unaffected by that check."
 									},
 									"best_before_date": {
 										"type": "string",
 										"format": "date",
-										"description": "The due date of the product to add, when omitted, the current date is used"
+										"description": "The due date of this stock entry. Omitted keeps the entry's current due date."
 									},
 									"price": {
-										"type": "number",
-										"description": "The price per stock quantity unit in configured currency"
+										"oneOf": [
+											{
+												"type": "number"
+											},
+											{
+												"type": "null"
+											},
+											{
+												"const": ""
+											}
+										],
+										"description": "The price per stock quantity unit in configured currency. Omitted keeps the entry's current price; null or \"\" clears it. Also accepts any string PHP's is_numeric() reads, such as \"3\", \"2.50\", \"1e3\", \".5\" or one with leading/trailing whitespace - undocumented in the type above, matching this fork's own convention for the same field on POST /stock/products/{productId}/add and the other stock-booking routes, whose examples show it."
 									},
 									"open": {
-										"type": "boolean",
-										"description": "If the stock entry was already opened or not"
+										"oneOf": [
+											{
+												"type": "boolean"
+											},
+											{
+												"type": "integer",
+												"enum": [
+													0,
+													1
+												]
+											},
+											{
+												"type": "string",
+												"enum": [
+													"0",
+													"1"
+												]
+											}
+										],
+										"description": "Whether the stock entry is opened. Also accepted: 0/1 and the strings \"0\"/\"1\" - not the word strings \"true\"/\"false\". Omitted keeps the entry's current open state; opening it for the first time stamps today as its opened date."
 									},
 									"location_id": {
 										"type": "integer",
-										"description": "If omitted, the default location of the product is used"
+										"description": "Must name an existing, active location. Omitted keeps the entry's current location."
 									},
 									"shopping_location_id": {
-										"type": "integer",
-										"description": "If omitted, no store will be affected"
+										"oneOf": [
+											{
+												"type": "integer"
+											},
+											{
+												"type": "null"
+											},
+											{
+												"const": ""
+											}
+										],
+										"description": "Must name an existing, active shopping location. Omitted keeps the entry's current shopping location; null or \"\" clears it. Also accepts any string PHP's filter_var(..., FILTER_VALIDATE_INT) reads, with no leading or trailing whitespace, such as \"1\" or \"+1\" - undocumented in the type above, matching this fork's own convention for location_id/shopping_location_id on the other stock-booking routes."
 									},
 									"purchased_date": {
 										"type": "string",
 										"format": "date",
-										"description": "The date when this stock entry was purchased"
+										"description": "The date when this stock entry was purchased. Omitted keeps the entry's current purchased date."
+									},
+									"note": {
+										"type": [
+											"string",
+											"null"
+										],
+										"description": "A free-text note. Omitted keeps the entry's current note; null clears it."
 									}
 								},
+								"required": [
+									"amount"
+								],
 								"example": {
-									"id": "2",
-									"amount": "1",
+									"amount": 1,
 									"best_before_date": "2021-07-19",
 									"purchased_date": "2020-01-01",
-									"price": "22.03",
+									"price": 22.03,
 									"open": false,
-									"location_id": "4"
+									"location_id": 4
 								}
 							}
 						}
@@ -2303,7 +2437,7 @@
 						}
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing product, invalid transaction type)",
+						"description": "The operation was not successful (possible errors are: not an existing stock entry, a negative amount, or a supplied field that could not be read as its documented type - including a location_id/shopping_location_id naming no active row)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2407,7 +2541,7 @@
 						}
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing stock entry, entry is not a coherent single opened container, measurement unit does not convert to the product's stock unit)",
+						"description": "The operation was not successful (possible errors are: Not existing stock entry, entry is not a coherent single opened container, measurement unit does not convert to the product's stock unit, or gross could not be read as a real boolean - the word strings \"true\"/\"false\" are refused)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2830,7 +2964,7 @@
 						}
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing product, invalid transaction type)",
+						"description": "The operation was not successful (possible errors are: Not existing product, invalid transaction type, or a supplied best_before_date/purchased_date/price/location_id/shopping_location_id that could not be read as its documented type - including a location_id/shopping_location_id naming no active row)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3147,7 +3281,7 @@
 						}
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing product)",
+						"description": "The operation was not successful (possible errors are: Not existing product, or a supplied best_before_date/purchased_date/price/location_id/shopping_location_id that could not be read as its documented type - including a location_id/shopping_location_id naming no active row)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3265,7 +3399,7 @@
 						}
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing product, given amount > current unopened stock amount, a measurement without a specific single-unit stock entry, or a measurement unit that does not convert to the product's stock unit)",
+						"description": "The operation was not successful (possible errors are: Not existing product, given amount > current unopened stock amount, a measurement without a specific single-unit stock entry, a measurement unit that does not convert to the product's stock unit, or measurement.gross not readable as a real boolean - the word strings \"true\"/\"false\" are refused)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3485,7 +3619,7 @@
 						}
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing product, invalid transaction type)",
+						"description": "The operation was not successful (possible errors are: Not existing product, invalid transaction type, or a supplied best_before_date/purchased_date/price/location_id/shopping_location_id that could not be read as its documented type - including a location_id/shopping_location_id naming no active row)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3760,7 +3894,7 @@
 						}
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing product)",
+						"description": "The operation was not successful (possible errors are: Not existing product, or a supplied best_before_date/purchased_date/price/location_id/shopping_location_id that could not be read as its documented type - including a location_id/shopping_location_id naming no active row)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3842,7 +3976,7 @@
 						}
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing product, given amount > current unopened stock amount)",
+						"description": "The operation was not successful (possible errors are: Not existing product, given amount > current unopened stock amount, or measurement.gross not readable as a real boolean - the word strings \"true\"/\"false\" are refused)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3935,7 +4069,7 @@
 		},
 		"/stock/locations/{locationId}/weigh": {
 			"post": {
-				"summary": "Weighs a vessel (a bin, a spice jar) and corrects its one stock entry to match, subtracting the location's own tare",
+				"summary": "Weighs a vessel (a bin, a spice jar) and corrects its stock total at that location to match, subtracting the location's own tare",
 				"tags": [
 					"Stock"
 				],
@@ -3964,6 +4098,11 @@
 									"gross_qu_id": {
 										"type": "integer",
 										"description": "Optional. When given, must equal the location's tare_qu_id, or the request is refused rather than converted"
+									},
+									"best_before_date": {
+										"type": "string",
+										"format": "date",
+										"description": "Required only when the reading is higher than the amount already on record at this location: a positive correction adds a new stock entry and cannot guess its due date. A malformed value or JSON null is refused with a 400 whatever the reading; omit the field entirely for it to have no bearing when the reading is lower or unchanged."
 									}
 								},
 								"example": {
@@ -3975,7 +4114,7 @@
 				},
 				"responses": {
 					"200": {
-						"description": "The operation was successful",
+						"description": "The operation was successful. An empty array means the reading matched the amount already on record at this location and nothing was booked (ADR-0033)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3988,7 +4127,7 @@
 						}
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: not existing location, no tare configured, zero or more than one product stocked at the location, gross reading in the wrong unit, gross reading below the tare weight, unconvertible tare unit)",
+						"description": "The operation was not successful (possible errors are: not existing location, no tare configured, zero or more than one product stocked at the location, gross reading in the wrong unit, gross reading below the tare weight, unconvertible tare unit, higher reading given with no best_before_date, malformed or null best_before_date whatever the reading)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -4053,6 +4192,11 @@
 									"gross_qu_id": {
 										"type": "integer",
 										"description": "Optional. When given, must equal the location's tare_qu_id, or the request is refused rather than converted"
+									},
+									"best_before_date": {
+										"type": "string",
+										"format": "date",
+										"description": "Required only when the reading is higher than the amount already on record at this location: a positive correction adds a new stock entry and cannot guess its due date. A malformed value or JSON null is refused with a 400 whatever the reading; omit the field entirely for it to have no bearing when the reading is lower or unchanged."
 									}
 								},
 								"example": {
@@ -4064,7 +4208,7 @@
 				},
 				"responses": {
 					"200": {
-						"description": "The operation was successful",
+						"description": "The operation was successful. An empty array means the reading matched the amount already on record at this location and nothing was booked (ADR-0033)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -4126,7 +4270,7 @@
 								"properties": {
 									"list_id": {
 										"type": "integer",
-										"description": "The shopping list to use, when omitted, the default shopping list (with id 1) is used"
+										"description": "The shopping list to use; when omitted or null, the default shopping list (with id 1) is used"
 									}
 								},
 								"example": {
@@ -4141,7 +4285,7 @@
 						"description": "The operation was successful"
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing shopping list)",
+						"description": "The operation was not successful (possible errors are: Not existing shopping list, or a present list_id that is not a positive integer)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -4189,7 +4333,7 @@
 								"properties": {
 									"list_id": {
 										"type": "integer",
-										"description": "The shopping list to use, when omitted, the default shopping list (with id 1) is used"
+										"description": "The shopping list to use; when omitted or null, the default shopping list (with id 1) is used"
 									}
 								},
 								"example": {
@@ -4204,7 +4348,7 @@
 						"description": "The operation was successful"
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing shopping list)",
+						"description": "The operation was not successful (possible errors are: Not existing shopping list, or a present list_id that is not a positive integer)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -4252,7 +4396,7 @@
 								"properties": {
 									"list_id": {
 										"type": "integer",
-										"description": "The shopping list to use, when omitted, the default shopping list (with id 1) is used"
+										"description": "The shopping list to use; when omitted or null, the default shopping list (with id 1) is used"
 									}
 								},
 								"example": {
@@ -4267,7 +4411,7 @@
 						"description": "The operation was successful"
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing shopping list)",
+						"description": "The operation was not successful (possible errors are: Not existing shopping list, or a present list_id that is not a positive integer)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -4315,7 +4459,7 @@
 								"properties": {
 									"list_id": {
 										"type": "integer",
-										"description": "The shopping list id to clear, when omitted, the default shopping list (with id 1) is used"
+										"description": "The shopping list id to clear; when omitted or null, the default shopping list (with id 1) is used"
 									},
 									"done_only": {
 										"type": "boolean",
@@ -4335,7 +4479,7 @@
 						"description": "The operation was successful"
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing shopping list)",
+						"description": "The operation was not successful (possible errors are: Not existing shopping list, or a present list_id that is not a positive integer)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -4392,7 +4536,7 @@
 									},
 									"list_id": {
 										"type": "integer",
-										"description": "A valid shopping list id, when omitted, the default shopping list (with id 1) is used"
+										"description": "A valid shopping list id; when omitted or null, the default shopping list (with id 1) is used"
 									},
 									"product_amount": {
 										"type": "number",
@@ -4418,7 +4562,7 @@
 						"description": "The operation was successful"
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing shopping list, Invalid product id supplied)",
+						"description": "The operation was not successful (possible errors are: Not existing shopping list, Invalid product id supplied, or a present list_id that is not a positive integer)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -4471,7 +4615,7 @@
 									},
 									"list_id": {
 										"type": "integer",
-										"description": "A valid shopping list id, when omitted, the default shopping list (with id 1) is used"
+										"description": "A valid shopping list id; when omitted or null, the default shopping list (with id 1) is used"
 									},
 									"product_amount": {
 										"type": "number",
@@ -4492,7 +4636,7 @@
 						"description": "The operation was successful"
 					},
 					"400": {
-						"description": "The operation was not successful (possible errors are: Not existing shopping list, Invalid product id supplied)",
+						"description": "The operation was not successful (possible errors are: Not existing shopping list, Invalid product id supplied, or a present list_id that is not a positive integer)",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -4598,7 +4742,17 @@
 				],
 				"responses": {
 					"204": {
-						"description": "The operation was successful"
+						"description": "The operation was successful",
+						"headers": {
+							"Victual-Label-Revival": {
+								"description": "Present only when the undo restored or declined a stock entry label that a whole-row consumption had retired (ADR-0037). An RFC 8941 dictionary of two integers: `restored` counts labels that work again on their restored stock entry; `retired` counts labels that stay retired and need a new print. Absent when no label was affected. Set only after the undo committed; a refused undo carries no such header.",
+								"schema": {
+									"type": "string",
+									"pattern": "^restored=[0-9]+, retired=[0-9]+$",
+									"example": "restored=1, retired=0"
+								}
+							}
+						}
 					},
 					"400": {
 						"description": "The operation was not successful (possible errors are: Not existing booking)",
@@ -4710,7 +4864,17 @@
 				],
 				"responses": {
 					"204": {
-						"description": "The operation was successful"
+						"description": "The operation was successful",
+						"headers": {
+							"Victual-Label-Revival": {
+								"description": "Present only when the undo restored or declined a stock entry label that a whole-row consumption had retired (ADR-0037). An RFC 8941 dictionary of two integers: `restored` counts labels that work again on their restored stock entry; `retired` counts labels that stay retired and need a new print. Absent when no label was affected. Set only after the undo committed; a refused undo carries no such header.",
+								"schema": {
+									"type": "string",
+									"pattern": "^restored=[0-9]+, retired=[0-9]+$",
+									"example": "restored=1, retired=0"
+								}
+							}
+						}
 					},
 					"400": {
 						"description": "The operation was not successful (possible errors are: Not existing transaction)",
@@ -4880,6 +5044,7 @@
 						}
 					}
 				},
+				"description": "Requires RECIPES_VIEW to read the recipe and SHOPPINGLIST_ITEMS_ADD to add its missing ingredients to the shopping list.",
 				"operationId": "postRecipesByRecipeIdAddNotFulfilledProductsToShoppinglist"
 			}
 		},
@@ -4988,6 +5153,7 @@
 						}
 					}
 				},
+				"description": "Requires RECIPES_VIEW to read the recipe and STOCK_CONSUME to consume it. A recipe that produces a product, including through a meal-plan shadow's original recipe, also requires STOCK_PURCHASE.",
 				"operationId": "postRecipesByRecipeIdConsume"
 			}
 		},
@@ -5103,8 +5269,19 @@
 								}
 							}
 						}
+					},
+					"403": {
+						"description": "The authenticated user lacks a permission this operation requires",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiError"
+								}
+							}
+						}
 					}
 				},
+				"description": "Requires RECIPES to copy and RECIPES_VIEW to read the source recipe.",
 				"operationId": "postRecipesByRecipeIdCopy"
 			}
 		},
@@ -5237,7 +5414,7 @@
 									"tracked_time": {
 										"type": "string",
 										"pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])( ([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d|T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?([Zz]|[+-]([01]\\d|2[0-3]):[0-5]\\d)?)?$",
-										"description": "The time of when the chore was executed. Omit the field to record the current time. When it is sent it must be one of: `YYYY-MM-DD HH:MM:SS`, this API's own rendering (a local wall-clock value in the server's time zone); `YYYY-MM-DD`, meaning midnight of that date; or the RFC 3339-shaped `T` form with an optional fractional part and an optional `Z` or `±HH:MM` offset (`2026-09-21T14:30:00Z`, `2026-09-21T14:30:00.123+02:00`, `2026-09-21T14:30:00`) - with an offset it names an instant and is stored as that instant rendered in the server's time zone, without one it is read as a wall clock already in that zone. It is deliberately **not** exactly RFC 3339, in both directions: that grammar requires an offset, and it permits a leap second `:60`, which this refuses rather than storing `2016-12-31T23:59:60Z` as `2017-01-01 00:00:00`. **Any other value is refused with 400 naming the field.** It was silently ignored until ADR-0028, and the current time was booked in its place; that is the behaviour this description replaces."
+										"description": "The time the chore was executed. Omit the field to record the current time. When it is sent it must be one of: the RFC 3339-shaped `T` form with a `Z` or `±HH:MM` offset (`2026-09-21T14:30:00Z`, `2026-09-21T14:30:00.123+02:00`), which names that instant; or a wall clock in the server's configured time zone - `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DDTHH:MM:SS`, or `YYYY-MM-DD` meaning midnight of that date. A wall clock the zone repeats when daylight saving ends names the **earlier** of its two instants (`2026-11-01 01:30:00` on America/New_York is `2026-11-01T05:30:00Z`); send the offset to mean the later one. A wall clock the zone skips when daylight saving begins is refused. A fractional part of any length is accepted and kept to the microsecond; later digits are dropped, not rounded. It is deliberately **not** exactly RFC 3339, in both directions: that grammar requires an offset, and it permits a leap second `:60`, which this refuses. **Any other value is refused with 400 naming the field**, and so are `null` and the empty string. The value is stored as an instant and sent back in the API's instant rendering (ADR-0027 decision 2, ADR-0028)."
 									},
 									"done_by": {
 										"type": "integer",
@@ -5317,7 +5494,17 @@
 				],
 				"responses": {
 					"204": {
-						"description": "The operation was successful"
+						"description": "The operation was successful",
+						"headers": {
+							"Victual-Label-Revival": {
+								"description": "Present only when the undo restored or declined a stock entry label that a whole-row consumption had retired (ADR-0037). An RFC 8941 dictionary of two integers: `restored` counts labels that work again on their restored stock entry; `retired` counts labels that stay retired and need a new print. Absent when no label was affected. Set only after the undo committed; a refused undo carries no such header.",
+								"schema": {
+									"type": "string",
+									"pattern": "^restored=[0-9]+, retired=[0-9]+$",
+									"example": "restored=1, retired=0"
+								}
+							}
+						}
 					},
 					"400": {
 						"description": "The operation was not successful (possible errors are: Not existing booking)",
@@ -5607,7 +5794,7 @@
 									"tracked_time": {
 										"type": "string",
 										"pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])( ([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d|T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?([Zz]|[+-]([01]\\d|2[0-3]):[0-5]\\d)?)?$",
-										"description": "The time of when the battery was charged. Omit the field to record the current time. When it is sent it must be one of: `YYYY-MM-DD HH:MM:SS`, this API's own rendering (a local wall-clock value in the server's time zone); `YYYY-MM-DD`, meaning midnight of that date; or the RFC 3339-shaped `T` form with an optional fractional part and an optional `Z` or `±HH:MM` offset (`2026-09-21T14:30:00Z`, `2026-09-21T14:30:00.123+02:00`, `2026-09-21T14:30:00`) - with an offset it names an instant and is stored as that instant rendered in the server's time zone, without one it is read as a wall clock already in that zone. It is deliberately **not** exactly RFC 3339, in both directions: that grammar requires an offset, and it permits a leap second `:60`, which this refuses rather than storing `2016-12-31T23:59:60Z` as `2017-01-01 00:00:00`. **Any other value is refused with 400 naming the field.** It was silently ignored until ADR-0028, and the current time was booked in its place; that is the behaviour this description replaces."
+										"description": "The time the battery was charged. Omit the field to record the current time. When it is sent it must be one of: the RFC 3339-shaped `T` form with a `Z` or `±HH:MM` offset (`2026-09-21T14:30:00Z`, `2026-09-21T14:30:00.123+02:00`), which names that instant; or a wall clock in the server's configured time zone - `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DDTHH:MM:SS`, or `YYYY-MM-DD` meaning midnight of that date. A wall clock the zone repeats when daylight saving ends names the **earlier** of its two instants (`2026-11-01 01:30:00` on America/New_York is `2026-11-01T05:30:00Z`); send the offset to mean the later one. A wall clock the zone skips when daylight saving begins is refused. A fractional part of any length is accepted and kept to the microsecond; later digits are dropped, not rounded. It is deliberately **not** exactly RFC 3339, in both directions: that grammar requires an offset, and it permits a leap second `:60`, which this refuses. **Any other value is refused with 400 naming the field**, and so are `null` and the empty string. The value is stored as an instant and sent back in the API's instant rendering (ADR-0027 decision 2, ADR-0028)."
 									}
 								}
 							}
@@ -5790,7 +5977,7 @@
 									"done_time": {
 										"type": "string",
 										"pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])( ([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d|T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?([Zz]|[+-]([01]\\d|2[0-3]):[0-5]\\d)?)?$",
-										"description": "The time of when the task was completed. Omit the field to record the current time. When it is sent it must be one of: `YYYY-MM-DD HH:MM:SS`, this API's own rendering (a local wall-clock value in the server's time zone); `YYYY-MM-DD`, meaning midnight of that date; or the RFC 3339-shaped `T` form with an optional fractional part and an optional `Z` or `±HH:MM` offset (`2026-09-21T14:30:00Z`, `2026-09-21T14:30:00.123+02:00`, `2026-09-21T14:30:00`) - with an offset it names an instant and is stored as that instant rendered in the server's time zone, without one it is read as a wall clock already in that zone. It is deliberately **not** exactly RFC 3339, in both directions: that grammar requires an offset, and it permits a leap second `:60`, which this refuses rather than storing `2016-12-31T23:59:60Z` as `2017-01-01 00:00:00`. **Any other value is refused with 400 naming the field.** It was silently ignored until ADR-0028, and the current time was booked in its place; that is the behaviour this description replaces."
+										"description": "The time the task was completed. Omit the field to record the current time. When it is sent it must be one of: the RFC 3339-shaped `T` form with a `Z` or `±HH:MM` offset (`2026-09-21T14:30:00Z`, `2026-09-21T14:30:00.123+02:00`), which names that instant; or a wall clock in the server's configured time zone - `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DDTHH:MM:SS`, or `YYYY-MM-DD` meaning midnight of that date. A wall clock the zone repeats when daylight saving ends names the **earlier** of its two instants (`2026-11-01 01:30:00` on America/New_York is `2026-11-01T05:30:00Z`); send the offset to mean the later one. A wall clock the zone skips when daylight saving begins is refused. A fractional part of any length is accepted and kept to the microsecond; later digits are dropped, not rounded. It is deliberately **not** exactly RFC 3339, in both directions: that grammar requires an offset, and it permits a leap second `:60`, which this refuses. **Any other value is refused with 400 naming the field**, and so are `null` and the empty string. The value is stored as an instant and sent back in the API's instant rendering (ADR-0027 decision 2, ADR-0028)."
 									}
 								}
 							}
@@ -9185,7 +9372,10 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"location_id": {
 						"type": "integer"
@@ -9202,10 +9392,16 @@
 						"description": "Retired as a mechanism under ADR-0022 (2026-09-14): its arithmetic is removed and enabling it (0 -> 1) is refused with 400. Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze. See docs/plans/landed/28-open-container-measurement.md."
 					},
 					"not_check_stock_fulfillment_for_recipes": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"product_group_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"tare_weight": {
 						"type": "number",
@@ -9228,15 +9424,25 @@
 						"default": 0
 					},
 					"picture_file_name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"shopping_location_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"treat_opened_as_out_of_stock": {
 						"type": "integer"
@@ -9255,7 +9461,10 @@
 						"type": "integer"
 					},
 					"default_consume_location_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"move_on_open": {
 						"type": "integer"
@@ -9323,7 +9532,10 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"location_id": {
 						"type": "integer"
@@ -9340,10 +9552,16 @@
 						"description": "Retired as a mechanism under ADR-0022 (2026-09-14): its arithmetic is removed and enabling it (0 -> 1) is refused with 400. Stays on the wire at its current value per decision 7 until plan 14 piece 2's contract freeze. See docs/plans/landed/28-open-container-measurement.md."
 					},
 					"not_check_stock_fulfillment_for_recipes": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"product_group_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"tare_weight": {
 						"type": "number",
@@ -9366,15 +9584,25 @@
 						"default": 0
 					},
 					"picture_file_name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"shopping_location_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"treat_opened_as_out_of_stock": {
 						"type": "integer"
@@ -9389,7 +9617,10 @@
 						"type": "integer"
 					},
 					"default_consume_location_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"move_on_open": {
 						"type": "integer"
@@ -9462,18 +9693,31 @@
 						"type": "string"
 					},
 					"name_plural": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"plural_forms": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"userfields": {
 						"type": "object",
@@ -9505,12 +9749,19 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"parent_location_id": {
 						"type": [
@@ -9524,7 +9775,7 @@
 							"integer",
 							"null"
 						],
-						"description": "How cold this location is kept, or null for unclassified - see StorageClass. When set, it is the sole writer of is_freezer: an update that sets this column also overwrites is_freezer from the class's treats_as_freezer, whatever value this same request otherwise submits for it. When null or absent, is_freezer stays independently editable."
+						"description": "How cold this location is kept, or null for unclassified - see StorageClass. is_freezer is independently editable when the location has no storage class after this request - whether none was ever set or this request clears it - and is derived from the class otherwise, overwriting whatever this same request submits for the flag. Editing a storage class's own treats_as_freezer re-derives is_freezer for every location currently carrying that class."
 					},
 					"tare_weight": {
 						"type": [
@@ -9592,9 +9843,13 @@
 						"type": "integer"
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"active": {
 						"type": "integer",
@@ -9745,12 +10000,19 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"userfields": {
 						"type": "object",
@@ -9810,20 +10072,32 @@
 						"type": "integer"
 					},
 					"location_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"shopping_location_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"amount": {
 						"type": "number"
 					},
 					"best_before_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date"
 					},
 					"purchased_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date"
 					},
 					"stock_id": {
@@ -9831,23 +10105,36 @@
 						"description": "A unique id which references this stock entry during its lifetime"
 					},
 					"price": {
-						"type": "number",
+						"type": [
+							"number",
+							"null"
+						],
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"open": {
 						"type": "integer"
 					},
 					"opened_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date"
 					},
 					"note": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"opened_amount": {
 						"type": [
@@ -9875,8 +10162,9 @@
 							"string",
 							"null"
 						],
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "When opened_amount was recorded, so a stale figure is visible as stale. Present exactly where opened_amount is"
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "When opened_amount was recorded, so a stale figure is visible as stale. Present exactly where opened_amount is. An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				},
 				"example": {
@@ -9962,11 +10250,17 @@
 						"$ref": "#/components/schemas/QuantityUnit"
 					},
 					"last_purchased": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date"
 					},
 					"last_used": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date"
 					},
 					"stock_amount": {
@@ -9985,38 +10279,59 @@
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"next_due_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date"
 					},
 					"last_price": {
-						"type": "number",
+						"type": [
+							"number",
+							"null"
+						],
 						"description": "The price of the last purchase of the corresponding product",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"avg_price": {
-						"type": "number",
+						"type": [
+							"number",
+							"null"
+						],
 						"description": "The average price af all stock entries currently in stock of the corresponding product",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"current_price": {
-						"type": "number",
+						"type": [
+							"number",
+							"null"
+						],
 						"description": "The current price of the corresponding product, based on the stock entry to use next (defined by the default consume rule \"Opened first, then first due first, then first in first out\") or on the last price if the product is currently not in stock",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"oldest_price": {
-						"type": "number",
+						"type": [
+							"number",
+							"null"
+						],
 						"description": "This field is deprecated and will be removed in a future version (currently returns the same as `current_price`)",
 						"deprecated": true,
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"last_shopping_location_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"location": {
 						"$ref": "#/components/schemas/Location"
 					},
 					"average_shelf_life_days": {
-						"type": "number"
+						"type": [
+							"number",
+							"null"
+						]
 					},
 					"spoil_rate_percent": {
 						"type": "number"
@@ -10127,15 +10442,28 @@
 				"x-visibility": "STOCK_PRICES_VIEW",
 				"properties": {
 					"date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date",
 						"description": "Calendar date as \"YYYY-MM-DD\". The column behind it is a SQL `DATE`, so the value carries no time and `format: date` is what it actually is. Issue #231."
 					},
 					"price": {
-						"type": "number"
+						"type": [
+							"number",
+							"null"
+						]
 					},
 					"shopping_location": {
-						"$ref": "#/components/schemas/ShoppingLocation"
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/ShoppingLocation"
+							},
+							{
+								"type": "null"
+							}
+						]
 					}
 				}
 			},
@@ -10153,20 +10481,35 @@
 						"type": "string"
 					},
 					"qu_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"shopping_location_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"amount": {
-						"type": "number"
+						"type": [
+							"number",
+							"null"
+						]
 					},
 					"last_price": {
-						"type": "number",
+						"type": [
+							"number",
+							"null"
+						],
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"note": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					}
 				}
 			},
@@ -10194,21 +10537,34 @@
 						"type": "boolean"
 					},
 					"config": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"sort_number": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"input_required": {
 						"type": "boolean"
 					},
 					"default_value": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				}
 			},
@@ -10247,27 +10603,52 @@
 						"$ref": "#/components/schemas/Chore"
 					},
 					"last_tracked": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "When this chore was last tracked"
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "When this chore was last tracked. An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"track_count": {
 						"type": "integer",
 						"description": "How often this chore was tracked so far"
 					},
 					"last_done_by": {
-						"$ref": "#/components/schemas/UserDto"
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/UserDto"
+							},
+							{
+								"type": "null"
+							}
+						]
 					},
 					"next_estimated_execution_time": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"next_execution_assigned_user": {
-						"$ref": "#/components/schemas/UserDto"
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/UserDto"
+							},
+							{
+								"type": "null"
+							}
+						]
 					},
 					"average_execution_frequency_hours": {
-						"type": "integer",
+						"type": [
+							"integer",
+							"null"
+						],
 						"description": "Contains the average past execution frequency in hours or `null`, when the chore was never executed before"
 					}
 				},
@@ -10300,18 +10681,26 @@
 						"$ref": "#/components/schemas/Battery"
 					},
 					"last_charged": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "When this battery was last charged"
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "When this battery was last charged. An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"charge_cycles_count": {
 						"type": "integer",
 						"description": "How often this battery was charged so far"
 					},
 					"next_estimated_charge_time": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				},
 				"example": {
@@ -10330,6 +10719,7 @@
 			},
 			"User": {
 				"type": "object",
+				"description": "Write-only: the request body for POST /users and PUT /users/{userId}. Never returned by a response - GET /users returns UserDto instead, which carries no password field of any kind.",
 				"properties": {
 					"id": {
 						"type": "integer"
@@ -10338,21 +10728,48 @@
 						"type": "string"
 					},
 					"first_name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"last_name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"password": {
-						"type": "string"
+						"type": "string",
+						"description": "POST /users: required, except under externally managed (reverse-proxy) authentication, with authentication disabled, or on an embedded install - none of which ever check a local password to authenticate a request at all - where a missing or blank value is accepted and an unusable random password is stored instead, and a non-blank value sent anyway is still honored the same as under every other authentication backend. PUT /users/{userId}: optional; present and non-blank, it is treated as a password change, and changing your own account's password additionally requires current_password (see below); omitted, the stored password is left untouched. May also be sent base64-encoded, as password_base64 - a plain encoding, used because a password may contain characters a client finds awkward to send, not a secret-keeping measure - which takes precedence if both are sent."
+					},
+					"password_base64": {
+						"type": "string",
+						"description": "password, base64-encoded. See password's own description."
+					},
+					"current_password": {
+						"type": "string",
+						"description": "PUT /users/{userId} only. Required whenever the request changes your own account's password (self-edit with password present), including a must_change_password-flagged account's own forced rotation - refused with 400 (\"The current password is required to change the password, and did not match\") when missing, empty or wrong, with the same message in all three cases. A wrong one counts toward the same throttle as a failed login, and while that throttle is active every attempt is refused with that message, even a correct one. Ignored otherwise, including when an administrator changes someone else's password. May also be sent base64-encoded, as current_password_base64 - see password_base64 above."
+					},
+					"current_password_base64": {
+						"type": "string",
+						"description": "current_password, base64-encoded. See password_base64's own description."
 					},
 					"picture_file_name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "PUT /users/{userId} only: an omitted key leaves the stored picture untouched; an explicit null erases it. POST /users has no stored picture yet, so this distinction does not apply there."
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				}
 			},
@@ -10395,21 +10812,34 @@
 						"type": "string"
 					},
 					"first_name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"last_name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"display_name": {
 						"type": "string"
 					},
 					"picture_file_name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				}
 			},
@@ -10424,13 +10854,22 @@
 						"type": "integer"
 					},
 					"shopping_list_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"product_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"note": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"amount": {
 						"type": "number",
@@ -10439,9 +10878,13 @@
 						"description": "The manual entered amount"
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"userfields": {
 						"type": "object",
@@ -10464,10 +10907,16 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"used_in": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"charge_interval_days": {
 						"type": "integer",
@@ -10475,9 +10924,13 @@
 						"default": 0
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"userfields": {
 						"type": "object",
@@ -10495,14 +10948,22 @@
 						"type": "integer"
 					},
 					"tracked_time": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				}
 			},
@@ -10521,7 +10982,10 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"period_type": {
 						"type": "string",
@@ -10534,49 +10998,83 @@
 						]
 					},
 					"period_config": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"period_days": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"track_date_only": {
-						"type": "boolean"
+						"type": [
+							"boolean",
+							"null"
+						]
 					},
 					"rollover": {
-						"type": "boolean"
+						"type": [
+							"boolean",
+							"null"
+						]
 					},
 					"assignment_type": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"enum": [
 							"no-assignment",
 							"who-least-did-first",
 							"random",
-							"in-alphabetical-order"
+							"in-alphabetical-order",
+							null
 						]
 					},
 					"assignment_config": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"next_execution_assigned_to_user_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"start_date": {
 						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"rescheduled_date": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"rescheduled_next_execution_assigned_to_user_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"userfields": {
 						"type": "object",
@@ -10594,14 +11092,29 @@
 						"type": "integer"
 					},
 					"tracked_time": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
+					},
+					"stock_transaction_id": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "The stock_log.transaction_id this execution's own stock consumption was booked under, when TrackChore() booked one in the same transaction - null for an execution that consumed nothing, and for one recorded before this column existed. Undoing this execution undoes that stock transaction too (issue #506)."
 					}
 				}
 			},
@@ -10618,15 +11131,24 @@
 						"type": "number"
 					},
 					"best_before_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date"
 					},
 					"purchased_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date"
 					},
 					"used_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date"
 					},
 					"spoiled": {
@@ -10637,7 +11159,10 @@
 						"type": "string"
 					},
 					"transaction_id": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"transaction_type": {
 						"$ref": "#/components/schemas/StockTransactionType"
@@ -10651,12 +11176,19 @@
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"note": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"opened_amount": {
 						"type": [
@@ -10682,8 +11214,9 @@
 							"string",
 							"null"
 						],
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				}
 			},
@@ -10759,7 +11292,10 @@
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"best_before_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date",
 						"description": "The next due date for this product"
 					},
@@ -10782,20 +11318,34 @@
 						"type": "string"
 					},
 					"last_tracked_time": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"track_date_only": {
-						"type": "boolean"
+						"type": [
+							"boolean",
+							"null"
+						]
 					},
 					"next_estimated_execution_time": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "The next estimated execution time of this chore, 2999-12-31 23:59:59 when the given chore has a period_type of manually"
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "The next estimated execution time of this chore, 2999-12-31T23:59:59.000000Z when the given chore has a period_type of manually. An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"next_execution_assigned_to_user_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"is_rescheduled": {
 						"type": "boolean"
@@ -10804,7 +11354,14 @@
 						"type": "boolean"
 					},
 					"next_execution_assigned_user": {
-						"$ref": "#/components/schemas/UserDto"
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/UserDto"
+							},
+							{
+								"type": "null"
+							}
+						]
 					}
 				}
 			},
@@ -10815,14 +11372,22 @@
 						"type": "integer"
 					},
 					"last_tracked_time": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"next_estimated_charge_time": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "The next estimated charge time of this battery, 2999-12-31 23:59:59 when the given battery has no charge_interval_days defined"
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "The next estimated charge time of this battery, 2999-12-31T23:59:59.000000Z when the given battery has no charge_interval_days defined. An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				}
 			},
@@ -10878,10 +11443,16 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"due_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date",
 						"description": "Calendar date as \"YYYY-MM-DD\". The column behind it is a SQL `DATE`, so the value carries no time and `format: date` is what it actually is. Issue #231."
 					},
@@ -10889,20 +11460,34 @@
 						"type": "integer"
 					},
 					"done_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"category_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"assigned_to_user_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"userfields": {
 						"type": "object",
@@ -10920,12 +11505,19 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				}
 			},
@@ -10939,10 +11531,16 @@
 						"type": "string"
 					},
 					"description": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"due_date": {
-						"type": "string",
+						"type": [
+							"string",
+							"null"
+						],
 						"format": "date",
 						"description": "Calendar date as \"YYYY-MM-DD\". The column behind it is a SQL `DATE`, so the value carries no time and `format: date` is what it actually is. Issue #231."
 					},
@@ -10950,26 +11548,54 @@
 						"type": "integer"
 					},
 					"done_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"category_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"assigned_to_user_id": {
-						"type": "integer"
+						"type": [
+							"integer",
+							"null"
+						]
 					},
 					"row_created_timestamp": {
-						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"assigned_to_user": {
-						"$ref": "#/components/schemas/UserDto"
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/UserDto"
+							},
+							{
+								"type": "null"
+							}
+						]
 					},
 					"category": {
-						"$ref": "#/components/schemas/TaskCategory"
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/TaskCategory"
+							},
+							{
+								"type": "null"
+							}
+						]
 					}
 				}
 			},
@@ -10978,8 +11604,9 @@
 				"properties": {
 					"changed_time": {
 						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				}
 			},
@@ -10991,18 +11618,20 @@
 					},
 					"time_local": {
 						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "Local date and time in the server's configured time zone, rendered as \"YYYY-MM-DD HH:MM:SS\". Deliberately not `format: date-time`: there is no `T` separator and no UTC offset, so the value is not RFC 3339 and a strict RFC 3339 reader cannot decode it. Issue #231."
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}[+-]\\d{2}:\\d{2}$",
+						"description": "The same instant as `time_utc`, rendered in the server's configured time zone with that zone's offset, for example \"2026-10-04T14:30:00.000000-04:00\" on a server set to America/New_York. The one value on the wire that does not end in `Z` (ADR-0027 open question 1), so the text-comparison promise of the other instants does not cover it. Issue #650."
 					},
 					"time_local_sqlite3": {
 						"type": "string",
-						"pattern": "^$|^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "The same local rendering as `time_local`, as SQLite's own client library computes it - or the empty string, which is what every serving image reports since ADR-0008 retired SQLite as a runtime engine and pdo_sqlite stopped being installed. Deliberately not `format: date-time`; see `time_local`. Issue #231."
+						"pattern": "^$|^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}[+-]\\d{2}:\\d{2}$",
+						"description": "The same rendering as `time_local`, as SQLite's own client library computes the wall clock - or the empty string, which is what every serving image reports since ADR-0008 retired SQLite as a runtime engine and pdo_sqlite stopped being installed. Not `format: date-time`, because the empty string is not one. Issue #650."
 					},
 					"time_utc": {
 						"type": "string",
-						"pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
-						"description": "The same instant as `time_local`, in **UTC** rather than in the server's configured zone - `ApplicationService::GetSystemTime()` renders it through `new \\DateTimeZone('UTC')`. The zone is carried by the property name and not by the value: rendered as \"YYYY-MM-DD HH:MM:SS\", deliberately not `format: date-time`, because there is no `T` separator and no `Z`, and a strict RFC 3339 reader cannot decode it. This is one of the exceptions ADR-0027 decision 2 enumerates. Issue #231."
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "The current instant in UTC - the same instant as `time_local`, which carries the server's offset instead. An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					},
 					"timestamp": {
 						"type": "integer"
@@ -11370,7 +11999,10 @@
 						]
 					},
 					"row_created_timestamp": {
-						"type": "string"
+						"type": "string",
+						"format": "date-time",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+						"description": "An instant, sent as RFC 3339 in UTC with exactly six fractional digits, for example \"2026-10-04T18:30:00.000000Z\" (ADR-0027 decision 2). The fixed width makes text order chronological order, so two values may be compared as strings. Issue #650."
 					}
 				}
 			},
@@ -11527,7 +12159,7 @@
 			"GenericEntityWrite": {
 				"type": "object",
 				"additionalProperties": true,
-				"description": "A map of the entity's writable columns. Deliberately untyped, because that is what the server implements: `POST /objects/{entity}` and `PUT /objects/{entity}/{objectId}` take whatever keys the body carries, drop the two the server owns (`id` and `row_created_timestamp` - see GenericEntityApiController::WithoutServerOwnedColumns), and `PUT` writes only the keys present, so a partial body is a partial update. Nothing validates the body against a schema.\n\nThese two bodies used to be documented as the same undiscriminated `oneOf` the read response used. That was never accurate - the union was matched by declaration order so every entity's body was really a `Product`, and both of `Product`'s server-owned properties were documented as settable. Once the read union's members gained `required` properties for issue #232, continuing to share them would have meant documenting `id` as mandatory on a create and forcing a read-modify-write for every partial update. The column vocabulary to use here is the schema of the entity being written - Product, Chore, Battery, Location, QuantityUnit, ShoppingListItem, StockEntry, ProductBarcode, Userfield - minus `id` and `row_created_timestamp`."
+				"description": "A map of the entity's writable columns. Deliberately untyped, because that is what the server implements: `POST /objects/{entity}` and `PUT /objects/{entity}/{objectId}` take whatever keys the body carries, drop the two columns the server owns (`id` and `row_created_timestamp`) plus `userfields`, which is not a column at all - GetObject()/GetObjects() attach it to every read response, and a client that PUTs it back no longer fails on it (see GenericEntityApiController::WithoutServerOwnedColumns), and `PUT` writes only the keys present, so a partial body is a partial update. Nothing validates the body against a schema.\n\nThese two bodies used to be documented as the same undiscriminated `oneOf` the read response used. That was never accurate - the union was matched by declaration order so every entity's body was really a `Product`, and both of `Product`'s server-owned properties were documented as settable. Once the read union's members gained `required` properties for issue #232, continuing to share them would have meant documenting `id` as mandatory on a create and forcing a read-modify-write for every partial update. The column vocabulary to use here is the schema of the entity being written - Product, Chore, Battery, Location, QuantityUnit, ShoppingListItem, StockEntry, ProductBarcode, Userfield - minus `id`, `row_created_timestamp` and `userfields`."
 			}
 		},
 		"securitySchemes": {
