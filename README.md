@@ -13,16 +13,16 @@ Documentation is published at **[victual-kit.readthedocs.io](https://victual-kit
 | [`Sources/`](Sources/README.md) | The **VictualKit Swift package**: `VictualAPI` (generated from the server's OpenAPI document), `VictualCore`, `VictualUI` and `VictualStock`. Every Apple platform from macOS 14 and iOS 17. |
 | [`Apps/Victual/`](Apps/Victual/README.md) | **Victual for macOS**, `0.1.0-MVP`. Connects to an instance, shows a household's stock, and books the five stock actions with undo. The package's first consumer. |
 | [`Apps/VictualPhone/`](Apps/VictualPhone/README.md) | **Victual for iPhone**. The same stores, plus barcode and label scanning: point the camera at a package or a Victual label, see what it is, and book it. |
-| [`openapi/`](openapi/README.md) | The server's OpenAPI document, vendored and pinned to Victual **0.2.0-MVP**, with the record of every normalization applied to it. |
+| [`openapi/`](openapi/README.md) | The server's OpenAPI document, vendored and pinned to Victual **0.3.0**, with the record of every normalization applied to it. |
 | [`docs/plans/`](docs/plans/README.md) | Design records for major changes, with delivery status. |
 | [`docs/concepts/`](docs/concepts/siri-and-app-intents.md) | Earlier-stage thinking: Siri and App Intents for the iPhone application. |
 | [`.devtools/`](.devtools/vale/README.md) | Prose checks for the documentation, and the documentation site's build. |
 
 ## Compatibility
 
-The package and both applications need a Victual server at **0.2.0-MVP or later**.
-That release made the server send its documented booleans as `true`/`false`, and a
-booking response from an older server does not decode. The
+The package and both applications are built against Victual **0.3.0**. That release
+sends every timestamp as RFC 3339 in UTC and types more fields as nullable, so the
+generated API changed with it. A server at 0.2.0-MVP or earlier is not supported; the
 [package guide](Sources/README.md#requirements) has the detail.
 
 ## Using the package

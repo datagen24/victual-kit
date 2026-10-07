@@ -3,13 +3,13 @@ import OpenAPIRuntime
 
 /// How this package reads and writes the two date shapes Victual puts on the wire.
 ///
-/// The server renders timestamps the way its database stores them — `"2019-05-03
-/// 18:24:04"`, a space instead of a `T` and no offset — while the specification
-/// types those fields `format: date-time`. A strict ISO 8601 reader rejects them,
-/// so `row_created_timestamp` alone would fail every stock-entry read.
-/// [ADR-0005](https://github.com/datagen24/victual/blob/master/docs/adr/0005-wire-contract-is-the-invariant.md)
-/// documents that rendering as an accepted exception; this is where the package
-/// absorbs it, once, so no caller has to.
+/// Since Victual 0.3.0 every timestamp is RFC 3339 in UTC with six fractional
+/// digits — `"2026-10-04T18:30:00.000000Z"` — and the specification types those
+/// fields `format: date-time`, so they generate as `Foundation.Date` through
+/// ``transcoder``. Earlier servers rendered them as the database stores them,
+/// `"2019-05-03 18:24:04"`, a space instead of a `T` and no offset, in the
+/// instance's zone. The transcoder and ``timestamp(_:in:)`` still read that form,
+/// so an older value does not fail a whole response.
 ///
 /// Day-only fields (`format: date`) generate as `Swift.String` rather than
 /// `Foundation.Date`, so they are parsed here explicitly by ``day(_:)`` at the
@@ -54,16 +54,15 @@ public enum VictualDates {
         return formatters.parse(trimmed, using: dayFormats, in: nil)
     }
 
-    /// Parses a timestamp field — `row_created_timestamp`, `changed_time` and
-    /// the like — which since upstream ADR-0027 the specification types as a
-    /// plain string rather than `format: date-time`.
+    /// Parses a timestamp held as text.
     ///
-    /// Reads everything ``transcoder`` reads, and additionally the PostgreSQL
-    /// `TIMESTAMPTZ` rendering — `"2026-09-01 10:00:00.123456+00"`, a UTC offset
-    /// and optional fractional seconds — which ADR-0027 names as an exception
-    /// for label fields such as `retired_at`. Fractional seconds are dropped:
-    /// nothing here displays or compares below a second. Returns `nil` for an
-    /// absent, empty or unreadable value.
+    /// The specification types timestamps `format: date-time`, which generate as
+    /// `Date` and never reach this. It remains for text read outside a generated
+    /// type. Reads everything ``transcoder`` reads, and additionally the
+    /// PostgreSQL `TIMESTAMPTZ` rendering — `"2026-09-01 10:00:00.123456+00"`, a
+    /// UTC offset and optional fractional seconds. Fractional seconds are
+    /// dropped on that path: nothing here displays or compares below a second.
+    /// Returns `nil` for an absent, empty or unreadable value.
     ///
     /// - Parameter timeZone: The zone a value without an offset was rendered
     ///   in — the instance's. Defaults to the one ``VictualClient`` has bound

@@ -19,14 +19,14 @@ Scripts/update-openapi.py --check    # CI: fail if the artifacts are stale
 
 CI runs `--check` on every pull request and weekly on a schedule, so an upstream change
 surfaces as a failing job rather than as drift. The pinned revision is upstream commit
-`38445d4`, the Victual **0.2.0-MVP** release.
+`541076c`, the Victual **0.3.0** release.
 
 ## What the normalizer fixes, and why
 
 Victual's document is generated from Slim/PHP routes and did not load in
 swift-openapi-generator as published.
 
-As of 0.2.0-MVP only repair 2 and repair 6 still change anything. The sync report in
+As of 0.3.0 only repair 2 and repair 6 still change anything. The sync report in
 `spec-lock.json` shows every other count at zero, because upstream now publishes those
 shapes correctly. The repairs stay in the script, and `Tests/VictualAPITests` keeps
 asserting the shapes they produced. A repair that is a no-op today guards against the same
@@ -70,7 +70,7 @@ A defect that changes what the API *says* it returns is not repaired here, becau
 repairing it would mean guessing at the contract. Such defects are recorded in
 `spec-lock.json` under `upstreamIssuesLeftInPlace` and reported upstream.
 
-The list is empty as of 0.2.0-MVP. The one entry it held, `GET /user` typed as an object
+The list is empty as of 0.3.0. The one entry it held, `GET /user` typed as an object
 carrying `items`, is fixed upstream
 ([issue #233](https://github.com/datagen24/victual/issues/233)): the route is documented
 as the array of one `UserDto` it has always returned.
