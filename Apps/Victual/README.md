@@ -19,10 +19,11 @@ Two behaviours are deliberate, and changing either one would be a regression:
 
 ## Version
 
-`0.1.0-MVP`, following Victual's own scheme — the server's `version.json` reads
-`0.2.0-MVP` — so the application and the instance it talks to read as one
-project. The application needs a server at 0.2.0-MVP or later; see the
-[package requirements](../../Sources/README.md#requirements). The suffix is a release stage, **Minimum Viable Product**: the five
+`0.3.0`, following Victual's own scheme: the application carries the version of the
+server it was built against, so the application and the instance it talks to read as one
+project. The application needs a server at 0.3.0; see the
+[package requirements](../../Sources/README.md#requirements). The earlier `-MVP` suffix
+was a release stage, and the server dropped it at 0.3.0. The scope is unchanged: the five
 bookings and the stock a household reads daily, and deliberately nothing else
 (see plan 01's [Scope](../../docs/plans/01-macos-stock-app.md#scope)).
 
