@@ -22,7 +22,9 @@ public struct ServerVersionBanner: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.bar)
+            // Not `.bar`: that material is unavailable on tvOS and watchOS, which this
+            // target also builds for.
+            .background(Color.secondary.opacity(0.15))
         }
     }
 }
