@@ -6,6 +6,13 @@ options:
     macOS: "14.0"
   createIntermediateGroups: true
 
+# DEVELOPMENT_TEAM comes from the untracked Apps/Local.xcconfig (see
+# Apps/Local.xcconfig.example), so regenerating this project cannot lose it and
+# no team ID is committed. Base.xcconfig includes it only if it exists.
+configFiles:
+  Debug: ../Base.xcconfig
+  Release: ../Base.xcconfig
+
 packages:
   VictualKit:
     # The package this application exists to consume and to prove.
@@ -72,6 +79,16 @@ schemes:
     build:
       targets:
         Victual: all
+    # Cmd-U runs the package's own test targets, so the whole suite is one
+    # keystroke from the IDE. The apps have no test targets of their own: their
+    # logic lives in the package (see the README).
+    test:
+      config: Debug
+      targets:
+        - package: VictualKit/VictualAPITests
+        - package: VictualKit/VictualCoreTests
+        - package: VictualKit/VictualUITests
+        - package: VictualKit/VictualStockTests
     run:
       config: Debug
     archive:
