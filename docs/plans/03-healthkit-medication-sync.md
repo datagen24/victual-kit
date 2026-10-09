@@ -8,7 +8,8 @@ edits or deletes it.
 **Depends on:** [plan 02](02-iphone-scanning-app.md) (the phone application and its stores);
 Victual [plan 22](https://github.com/datagen24/victual/blob/master/docs/plans/22-medication-tracking.md)
 and the proposed
-[ADR-0041](https://github.com/datagen24/victual/pull/711) for the receiving API. Tracked
+[ADR-0041](https://github.com/datagen24/victual/pull/711) (revised 2026-10-09 after this plan's
+first review, `bd7df261`) for the receiving API. Tracked
 server-side as [victual#702](https://github.com/datagen24/victual/issues/702), which waits
 on #696 (contract), #700 (external events) and #701 (refills). **None of those has
 landed, so every server shape below is the proposed one.**
@@ -40,9 +41,9 @@ has been observed on a device; the [device spike](#phase-0--device-spike) exists
 | --- | --- | --- |
 | All medication types are **iOS / iPadOS / watchOS / visionOS / macOS 26.0+**. | Reference pages for `HKMedicationDoseEvent`, `HKMedicationConcept`, `HKUserAnnotatedMedication`. | The package targets iOS 17 and the phone app iOS 18. HealthKit code needs its own target, `@available(iOS 26, *)` throughout. Targets are not raised. |
 | `HKMedicationDoseEvent` is an `HKSample`. Fields: `medicationConceptIdentifier`, `logStatus`, `scheduleType`, `doseQuantity: Double?`, `scheduledDoseQuantity: Double?`, `scheduledDate: Date?`, `unit: HKUnit`, plus `startDate`/`endDate`/`uuid` from `HKSample`. | Reference. | `doseQuantity` is **optional**. See the [mapping table](#field-mapping). |
-| `logStatus` has six cases: `taken`, `skipped`, `snoozed`, `notInteracted`, `notificationNotSent`, `notLogged`. `notLogged` is "the person undoes a previously logged medication status". | `LogStatus` reference. | ADR-0041 has four statuses; `notLogged` has no home. Server feedback 2. |
+| `logStatus` has six cases: `taken`, `skipped`, `snoozed`, `notInteracted`, `notificationNotSent`, `notLogged`. `notLogged` is "the person undoes a previously logged medication status". | `LogStatus` reference. | ADR-0041 now maps it to `not_logged`. |
 | `scheduleType` is `.schedule` or `.asNeeded`. | `ScheduleType` reference. | Used only for the `replaces` heuristic. |
-| `HKMedicationConcept.identifier` is an `HKHealthConceptIdentifier`: an **opaque `NSSecureCoding` object**, not a string; it documents only `domain`. It does conform to `CustomStringConvertible`, but no stable, meaningful string form is documented. The session says the identifier is stable across devices and time. | Reference; session. | `medication_ref` must be derived from it. Server feedback 4. |
+| `HKMedicationConcept.identifier` is an `HKHealthConceptIdentifier`: an **opaque `NSSecureCoding` object**, not a string; it documents only `domain`. It does conform to `CustomStringConvertible`, but no stable, meaningful string form is documented. The session says the identifier is stable across devices and time. | Reference; session. | `medication_ref` must be derived from it. |
 | Medications are **per-object authorized**: `requestPerObjectReadAuthorization(for:predicate:)` shows a sheet where the person ticks medications. It **always prompts**, even if already granted. Authorizing a medication grants its dose events. `requestAuthorization(toShare:read:)` for these types fails `errorInvalidArgument`. | Reference; session. | Authorization is an explicit, user-initiated "Choose medications" action. Never on launch. |
 | Medication data is **read-only** to third parties. | Apple DTS reply, [forum thread 803954](https://developer.apple.com/forums/thread/803954). | Request read only; never `toShare`. `NSHealthShareUsageDescription` only. |
 | Dose events can be logged retroactively and **edited by delete-and-recreate**; handle deletions from `HKAnchoredObjectQuery`. | Session. | `HKObject.uuid` is not a stable dose identity. See [replaces](#edits-and-the-replaces-inference). |
@@ -84,12 +85,13 @@ read-only, and that doses are sent to *their own* Victual server and nowhere els
 
 ### Feature visibility
 
-The Medications screen appears only when all hold: iOS 26+, Health data available,
-`SystemInformation.victualVersion >= 0.5.0` (using `ServerVersion`), and the key's
-`CapabilityGate` allows `STOCK_CONSUME`. A control that is unavailable says why, per
+The Medications screen appears only when all hold: iOS 26+, Health data available, the
+server's `GET /api/consumption/capabilities` answers with a `contract_version` and a
+`features[]` this client knows, and the key's `CapabilityGate` allows `STOCK_CONSUME`. The
+client tests for a feature, never for a version number; a `404` there means an older
+server and the screen says so. A control that is unavailable says why, per
 `CapabilityGate`'s convention, rather than vanishing. A server newer than the package
-already warns; this adds a *minimum*, which `ServerVersion` does not yet express and gains a
-`isAtLeast(_:)`.
+already warns through `ServerVersion`; no `isAtLeast` is needed.
 
 ### Field mapping
 
@@ -97,12 +99,12 @@ already warns; this adds a *minimum*, which `ServerVersion` does not yet express
 | --- | --- | --- |
 | `source_system` | constant `healthkit` | Matches the ADR's example. |
 | `source_event_id` | `HKObject.uuid.uuidString` | Fits `[A-Za-z0-9._:-]{1,128}`. Not stable across edits. |
-| `medication_ref` | derived from `medicationConceptIdentifier` | Opaque object with no documented string form. Candidates, in order: its `description`, if the spike shows it stable across launches and devices; else `hk:med:` + lowercase hex SHA-256 of its `NSKeyedArchiver` secure-coded bytes. **Neither is proven.** The spike records both and their stability. |
+| `medication_ref` | derived from `medicationConceptIdentifier` | Server treats it as opaque, `^[A-Za-z0-9._:-]{1,128}$`. Opaque object with no documented string form. Candidates, in order: its `description`, if the spike shows it stable across launches and devices; else `hk:med:` + lowercase hex SHA-256 of its `NSKeyedArchiver` secure-coded bytes. **Neither is proven.** The spike records both and their stability. |
 | `status` | `logStatus` | See below. |
-| `quantity` | `doseQuantity` | **Optional.** A `taken` event with `nil` quantity is *held locally* and flagged, not sent with a guessed 1. Server feedback 5 asks the contract to say what the mapping's default does. |
-| `unit_label` | `unit.unitString` | Compared by exact string by the server. What Health reports for "tablet" is unknown; spike item. |
+| `quantity` | `doseQuantity` | **Optional.** Omitted when `nil`; the client never substitutes a number. The mapping's `default_quantity` applies, or the event is `needs_review` / `quantity_missing`. |
+| `unit_label` | `unit.unitString` | Matched against the mapping's confirmed `unit_labels`; an unseen label is `needs_review` / `unit_unconfirmed` showing the exact string. What Health reports for "tablet" is unknown; spike item. |
 | `occurred_at` | `startDate` | RFC 3339 with the device's current offset. `scheduledDate` is *not* used: the person may take a dose hours late. |
-| `source_updated_at` | client observation time | `HKObject` exposes no modification time. Server feedback 3. |
+| `source_updated_at` | client observation time, optional | `HKObject` exposes no modification time. Excluded from the payload hash; sending it is harmless, omitting it is allowed. The outbox keeps the first value so a replay is byte-identical anyway. |
 | `replaces` | inferred, see below | The only place this client infers. |
 | `location_id` | the mapping's organizer choice | Sent when the mapping is `explicit`; otherwise omitted. |
 
@@ -114,7 +116,7 @@ Status translation:
 | `skipped` | `skipped` | |
 | `notInteracted`, `notificationNotSent` | `unanswered` | Reminder states; never a consumption. |
 | `snoozed` | `scheduled` | |
-| `notLogged` | `unanswered` **until the server defines `not_logged`** | A person undid a prior `taken`. Through ADR rule 3 any non-`taken` status voids a booked row, which is the right effect; only the label is imprecise. |
+| `notLogged` | `not_logged` | A person undid a prior `taken`. Behaves as `entered_in_error`: voids and restores stock if the event is within the server's 7-day window, else `needs_review` / `source_deleted`. |
 
 Only events with a **non-`taken`** status for an id the client has *already sent as taken*
 are worth sending. Skipped, snoozed and unanswered events for ids never sent are dropped
@@ -136,8 +138,9 @@ server to enforce it and saves traffic.
 4. Anchors are keyed by **(server, account, mapping set)**. Switching servers or users must
    not reuse another's anchor; re-mapping resets to `effectiveFrom`.
 5. Deleted objects arrive as `HKDeletedObject` carrying only a `uuid`. The client looks the
-   uuid up in its local ledger of ids it has sent. Unknown uuid: nothing to do. Known and
-   booked: `DELETE`.
+   uuid up in its local ledger of ids it has sent. Unknown uuid: nothing to do. Known:
+   `DELETE` **with a `reason` the client can actually justify**; see
+   [Deletion reasons](#deletion-reasons).
 
 The ledger of sent ids is local state, not an extra source of truth: the server's
 event row is authoritative and the ledger is an optimisation that lets the client skip
@@ -167,7 +170,13 @@ question 3.
 Server ADR rule 4: an event books only through a mapping the person approved. The screen
 lists the authorized medications (`HKUserAnnotatedMedicationQueryDescriptor`; archived ones
 shown separately), and for each the person picks a Victual product or recipe, the unit it
-is counted in, and an organizer location rule (fixed, single, explicit). The client does
+is counted in, an organizer location rule (fixed, single, explicit), and optionally a
+`default_quantity` for events Health records without one. The screen reads its choices from
+endpoints the server already has: unit conversions from
+`/api/objects/quantity_unit_conversions_resolved?query[]=product_id=…` and a product's
+locations from `/api/stock/products/{id}/locations`. The mapping starts with an empty
+`unit_labels`; the first event with an unseen label surfaces as a prompt showing the exact
+string Health sent, and approving it calls `resolve` with `approve_unit`. The client does
 not match a medication name to a product, does not infer a conversion from a strength, and
 does not pick an organizer. `nickname` and `displayText` are shown to the person and
 **never sent**: the server needs an opaque reference, not a drug name.
@@ -176,22 +185,34 @@ does not pick an organizer. `nickname` and `displayText` are shown to the person
 a quantity, a unit and a time. It contains no medication name. The mapping screen displays
 names from Health locally. Evidence for issue 702 records no real health details.
 
-### Revocation and the Health app's own changes
+### Deletion reasons
 
-The person can change authorization in the Health app at any time. On each foreground the
-client re-queries the authorized medications and compares to its mappings:
+ADR-0041 now requires the client to say *why* the source no longer has an event, and only
+`entered_in_error` restores stock. An `HKDeletedObject` carries a `uuid` and nothing else,
+so the client can know a reason only from context. It sends the strongest reason it can
+prove and otherwise says nothing:
 
-- A mapped medication that no longer appears marks the mapping *locally unavailable* and
-  asks the person to re-grant. It sends **nothing** to the server — in particular no
-  deletion — because losing read access is not the same as the dose not having happened.
-- A newly authorized medication with no mapping appears as "needs mapping" in the screen;
-  nothing books.
+| Evidence at the time the deletion is read | `reason` sent | Server effect on a `booked` event |
+| --- | --- | --- |
+| A `notLogged` sample for the same medication arrives (the person undid a dose) | none: a `PUT` with status `not_logged` | Void, if within 7 days |
+| The deletion is paired by the [`replaces` rule](#edits-and-the-replaces-inference) | none: the new event's `replaces` carries it | Old event voided with the new booking |
+| The medication is gone from the authorized list (re-queried now) | `access_revoked` | Stock untouched, `source_removed_at` recorded |
+| The medication `isArchived` | `medication_archived` | Stock untouched |
+| Anything else, including a single bare deletion | omitted (`unknown`) | `needs_review` / `source_deleted`; a person chooses `void` or `keep` |
 
-Whether revocation surfaces as `HKDeletedObject`s in an anchored query is unknown, and it
-matters: if it does, a naive sender would restore stock for every dose. The sender
-therefore treats a **burst** of deletions coinciding with a medication vanishing from the
-authorized list as revocation, not as deletion, and holds them. This is conservative by
-design; the spike confirms or removes the need.
+The client **never sends `entered_in_error` for a bare deletion**: it cannot tell a
+mistaken log from cleared history, and a wrong guess restores stock for pills that were
+swallowed. `history_cleared` is likewise not sent, because it cannot be told from many
+single deletions; it arrives as a burst of `unknown`, which the server queues for review.
+The client coalesces such a burst into one "N doses need your decision" row rather than N
+notifications. A bulk `void`/`keep` is remaining server item 3.
+
+Losing authorization is not the same as the dose not having happened, so a mapped medication
+that vanishes from the authorized list also marks the mapping *locally unavailable* and asks
+the person to re-grant. A newly authorized medication with no mapping appears as "needs
+mapping"; nothing books. Whether revocation really surfaces as `HKDeletedObject`s in an
+anchored query is unknown; with `access_revoked` available the stakes are lower, and the
+spike settles whether the evidence rule above ever fires.
 
 ### Pairing with the Siri concept
 
@@ -204,46 +225,38 @@ shows "last synced" and an unmistakable failure state, so a 401 is not a quiet o
 
 ## Server feedback
 
-What the Victual core API needs, in the order it blocks this client. These are for the
-maintainer; no comment has been posted to #702, #696 or #711 — that needs authorization.
+The first review of this plan raised eight points against ADR-0041. The maintainer revised
+the ADR in [PR #711](https://github.com/datagen24/victual/pull/711) on 2026-10-09 and
+answered all eight:
 
-1. **Deletion is not un-consumption.** ADR-0041 rule 7 makes `DELETE` void the event and
-   *restore stock*. That is right for "I logged a dose by mistake" and wrong for "I cleared
-   my Health history", "I removed an archived medication", or — if the device shows it —
-   "I revoked access". Those are not un-swallowed pills. Ask for either a `reason` on
-   `DELETE` (`source_deleted` vs `access_revoked`), or a server policy: deletions older
-   than N days, or for a transaction already reconciled or linked, go to `needs_review`
-   instead of `voided`. The real un-taken signal in HealthKit is `notLogged`, not deletion.
-2. **Status vocabulary.** HealthKit has six statuses; the ADR names four. Add `not_logged`
-   ("the person undid a previous status"), or document the mapping in the ADR so every
-   client does not invent one. Until then this client sends `unanswered`.
-3. **`source_updated_at` is required, but HealthKit samples are immutable.** An edit is a
-   new uuid and `HKObject` exposes no modification time. Make it optional for such
-   sources, or define it as "the client's observation time" so a replay of the same sample
-   carries a *different* value and trips `same_version_different_payload` (409) for no
-   reason. A replay must reuse the original value; the outbox stores it. State this.
-4. **`medication_ref` character set and length.** It sits in a URL path. Give it a pattern
-   (the ADR gives `source_event_id` one). `HKHealthConceptIdentifier` documents no string form, so
-   the fallback above hex-encodes a hash; the server should accept `^[A-Za-z0-9._:-]{1,128}$`.
-5. **`quantity` when HealthKit has none.** `doseQuantity` is optional. Say whether a
-   mapping can hold a default quantity, or the event goes to `needs_review`
-   (`missing_quantity`). The client will not invent one.
-6. **Unit matching is by exact string.** `unit_label` mismatches give `unit_mismatch`. What
-   Health reports is unverified. Prefer a mapping that *learns* the label from the first
-   event the person approves, or lists acceptable labels, over one the person has to type
-   to match a string they cannot see.
-7. **Data the mapping screen needs, which the contract does not yet provide.** (a) The
-   product's available unit conversions, to offer only valid units, so a 422
-   `invalid_mapping` is the exception; (b) which locations hold stock of a product, for the
-   `fixed`/`single` choice; (c) a way to ask "does this server support consumption events"
-   other than guessing from the version string — an entry in `GET /system/info` or
-   `GET /user/capabilities`. Check which already exist before asking.
-8. **OpenAPI.** The ADR-0041 fragment is a `.devtools` design file and is not in
-   `victual.openapi.json` until #700. This package generates its client from that spec, so
-   nothing is generated until then; see [phasing](#phasing).
-9. **Dependency edge to flag on #702.** Acceptance criterion 3 calls for "revoked access"
-   handling. That is meaningful only if the contract distinguishes revocation from
-   deletion — which is item 1.
+| # | Point | Disposition in the revised ADR | Client consequence |
+| --- | --- | --- | --- |
+| 1 | Deletion is not un-consumption | `DELETE` takes `reason`. Only `entered_in_error` restores stock; `history_cleared`, `medication_archived`, `access_revoked` keep the event `booked`; omitted/`unknown`, or older than 7 days, is `needs_review` / `source_deleted` | [Deletion reasons](#deletion-reasons) |
+| 2 | Status vocabulary | `not_logged` added, acts as `entered_in_error` | Status table |
+| 3 | `source_updated_at` | Optional, client observation time, outside the payload hash; 409 only if both present, equal and payload differs | Field table |
+| 4 | `medication_ref` | `^[A-Za-z0-9._:-]{1,128}$`, opaque | Field table |
+| 5 | No quantity | Mapping `default_quantity`, else `needs_review` / `quantity_missing` | Client omits quantity |
+| 6 | Unit strings | Mapping `unit_labels`; `unit_unconfirmed` shows the string; `approve_unit` | Prompt in the Medications screen |
+| 7 | Mapping-screen data | Existing endpoints; new `GET /api/consumption/capabilities` | [Feature visibility](#feature-visibility), [Mapping](#mapping-the-person-decides-the-client-never-guesses) |
+| 8 | OpenAPI | `.devtools/adr0041/` fragment is the interim typed-client source until #700 merges the routes | [Phase 1](#phase-1--model-sync-engine-and-tests-no-server-no-healthkit-import) |
+
+Those are answers on a **Proposed** record; nothing is implemented (#700 is not started)
+and none of it has met a real HealthKit payload. What remains for the maintainer:
+
+1. **7 days is the ADR's open question 4.** The window decides whether a late `not_logged`
+   or deletion restores stock automatically. From this client: a person who undoes a dose
+   in Health the same evening is the common case and a week covers it; the risk is the
+   other direction, a stale edit from a phone that was offline for longer. No change asked.
+2. **`replaces` (ADR open question 5).** The client's rule is in
+   [Edits](#edits-and-the-replaces-inference). The server voids exactly the event named,
+   which is what this client needs; whether the server should *also* verify the pairing is
+   for the maintainer. This client would not rely on it.
+3. **Bulk resolution.** `history_cleared` reaches the server as many `unknown` deletions,
+   each its own `needs_review` row. A person clearing a medication's history would face
+   one `void`/`keep` per dose. Ask for a batched `resolve` (or `resolve` by `reason` and
+   mapping) so the review inbox is not N taps.
+4. **#702 has no victual-kit link.** This plan is the candidate. Linking it needs the
+   maintainer's authorization, which has not been given on this side either.
 
 ## Phasing
 
@@ -267,11 +280,15 @@ phones are iPhone 16s on iOS 27. The simulator is not used; it has no medication
 ### Phase 1 — model, sync engine and tests (no server, no HealthKit import)
 
 `VictualHealth` model target; `DoseEventSource` and `ConsumptionEventSubmitter` protocols;
-hand-written `Codable` request/response types matching ADR-0041; the outbox, anchor and
-ledger; status translation; the `replaces` heuristic; revocation holding. Unit tests
+`Codable` request/response types matching ADR-0041's `.devtools/adr0041/` fragment; the
+outbox, anchor and ledger; status translation; the `replaces` heuristic; deletion-reason
+derivation. Unit tests
 against scripted sources and a fake submitter, covering the client half of the 17
-sequences. Hand-written types are deliberate: the specification does not contain them yet,
-and they are replaced, not wrapped, when it does.
+sequences. The types are written by hand, with a test that decodes the fragment's own examples so
+the two cannot drift quietly. Generating from the fragment was considered and rejected:
+it is a design file that #700 may change, and a generated target would have to be
+regenerated and re-reviewed on every revision. They are replaced, not wrapped, when the
+routes reach `victual.openapi.json`.
 
 ### Phase 2 — phone UI
 
@@ -282,8 +299,7 @@ synced", failures, held events), and a list of events needing the person. Presen
 ### Phase 3 — against a real server
 
 When Victual #700 lands and 0.5.0 ships: regenerate (`Scripts/` sync), delete the
-hand-written types in favour of the generated ones, bump `supportedServerVersion`, add
-`ServerVersion.isAtLeast`, run the device scenario.
+hand-written types in favour of the generated ones, bump `supportedServerVersion`, run the device scenario.
 
 ### Phase 4 — refill notices
 
@@ -307,7 +323,7 @@ a product from a medication. App Intents, which stay with the Siri concept.
 
 2. **Is delete-and-recreate really what an edit looks like, and what does undo look like?**
    The session says edits delete and recreate; `notLogged` exists for undo. Whether undo
-   produces a `notLogged` sample, a deletion, or both determines Server feedback 1 and 2.
+   produces a `notLogged` sample, a deletion, or both determines whether the deletion-reason evidence rule ever fires.
 
 3. **Is the `replaces` heuristic acceptable, or should the client never send it?** Sending
    it is atomic when right and could void the wrong dose when wrong. The narrow rule above
@@ -334,8 +350,9 @@ a product from a medication. App Intents, which stay with the Siri concept.
 
 1. `swift test` — Phase 1 suites: status translation, field mapping, outbox ordering and
    crash replay, anchor persistence keyed per server/account, deletion by ledger lookup,
-   revocation holding, the `replaces` heuristic positive and negative cases, key lapse
-   (401) surfacing as a failure state, and `ServerVersion.isAtLeast`.
+   each row of the deletion-reason table (and that a bare deletion never sends
+   `entered_in_error`), the burst coalescing, a nil `doseQuantity` omitted, the `replaces` heuristic positive and negative cases, key lapse
+   (401) surfacing as a failure state, and the capabilities check (404 on an older server hides the screen).
 2. The macOS application still builds and does not link `VictualHealth`.
 3. CI's `phone` job builds with the HealthKit entitlement, on the iOS 26+ SDK.
 4. **On a device (cannot be done in CI or the simulator).** Against a Victual 0.5.0
@@ -359,6 +376,7 @@ a product from a medication. App Intents, which stay with the Siri concept.
    | 17 other user, same id | ✔ | | key scoped to the signed-in user |
    | *(device-only)* **identifier behaviour on delete** | | ✔ | |
    | *(device-only)* **revocation emission** | | ✔ | holding |
+   | 9a–9e deletion reasons, `quantity_missing`, `unit_unconfirmed` | ✔ | ✔ what a real deletion carries | evidence rule, `approve_unit` prompt |
    | *(device-only)* **background delivery** | | ✔ | Open question 5 |
 
    Evidence records iOS version, device model, real payload field presence, and exact
