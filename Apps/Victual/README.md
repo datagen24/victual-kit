@@ -19,9 +19,9 @@ Two behaviours are deliberate, and changing either one would be a regression:
 
 ## Version
 
-`0.3.0`, following Victual's own scheme: the application carries the version of the
+`0.3.2`, following Victual's own scheme: the application carries the version of the
 server it was built against, so the application and the instance it talks to read as one
-project. The application needs a server at 0.3.0; see the
+project. The application needs a server at 0.3.2; see the
 [package requirements](../../Sources/README.md#requirements). The earlier `-MVP` suffix
 was a release stage, and the server dropped it at 0.3.0. The scope is unchanged: the five
 bookings and the stock a household reads daily, and deliberately nothing else

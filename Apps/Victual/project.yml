@@ -52,11 +52,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.victual.Victual
         PRODUCT_NAME: Victual
-        # Follows Victual's own scheme (its version.json reads "0.3.0"),
+        # Follows Victual's own scheme (its version.json reads "0.3.2"),
         # so an application and the server it talks to are legible as the same
         # project at a glance. CFBundleVersion below stays a plain integer, which
         # is the one the system actually orders builds by.
-        MARKETING_VERSION: "0.3.0"
+        MARKETING_VERSION: "0.3.2"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete

@@ -79,7 +79,7 @@ targets:
         PRODUCT_NAME: Victual
         TARGETED_DEVICE_FAMILY: "1"
         # Matches the macOS application; see Apps/Victual/README.md#version.
-        MARKETING_VERSION: "0.3.0"
+        MARKETING_VERSION: "0.3.2"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
