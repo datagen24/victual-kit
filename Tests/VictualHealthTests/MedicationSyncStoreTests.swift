@@ -78,6 +78,16 @@ struct MedicationSyncStoreTests {
         #expect(store.needsMapping == ["hk:med:99"])
     }
 
+    @Test func needsMappingRowPersistsUntilTheMedicationIsMapped() async {
+        let (store, _, _) = makeStore([F.batch([F.dose("D1", ref: "hk:med:99")]), F.batch(anchor: "a2")])
+        await store.sync()
+        await store.sync()  // nothing new in Health: the row must not vanish
+        #expect(store.reviewRows == [.needsMapping(medicationRef: "hk:med:99")])
+
+        store.setMappings(MappingSet([F.mapping(), F.mapping("hk:med:99")]))
+        #expect(store.needsMapping.isEmpty)
+    }
+
     @Test func serverNeedsMappingShowsTheSameRow() async {
         let submitter = FakeSubmitter()
         submitter.respond(to: "D1", with: ConsumptionEvent(sourceEventID: "D1", state: .needsMapping))

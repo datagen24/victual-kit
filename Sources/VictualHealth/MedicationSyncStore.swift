@@ -189,6 +189,7 @@ public final class MedicationSyncStore {
     public func setMappings(_ mappings: MappingSet) {
         guard mappings != self.mappings else { return }
         self.mappings = mappings
+        needsMapping.subtract(mappings.mappings.keys)
         engine = DoseSyncEngine(
             source: source, submitter: submitter, storage: storage, server: server,
             account: account, mappings: mappings, now: now, zone: zone)
@@ -201,7 +202,8 @@ public final class MedicationSyncStore {
         state = .syncing
         do {
             let report = try await engine.pull()
-            needsMapping = report.needsMapping
+            // Unmapped doses are never sent, so the server cannot remind us: keep the row until mapped.
+            needsMapping.formUnion(report.needsMapping)
             unavailableMedications.formUnion(report.revoked)
             try await engine.drain()
             lastSynced = now()
