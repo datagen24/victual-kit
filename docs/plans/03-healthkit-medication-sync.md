@@ -1,9 +1,9 @@
 # 03. HealthKit medication sync
 
 **Goal:** the iPhone application reads a person's medication dose events from Apple Health,
-with the person's per-medication consent, and submits them to Victual so the household's
-stock falls when a dose is logged — once per dose, however many times Health re-delivers,
-edits or deletes it.
+with the person's per-medication consent, and submits them to Victual. The household's
+stock falls when a dose is logged. It falls once per dose, however many times Health
+re-delivers, edits or deletes it.
 
 **Depends on:** [plan 02](02-iphone-scanning-app.md) (the phone application and its stores);
 Victual [plan 22](https://github.com/datagen24/victual/blob/master/docs/plans/22-medication-tracking.md)
@@ -75,13 +75,17 @@ decide whether the Medications screen exists at all.
 
 ### Entitlement and Info.plist
 
-`com.apple.developer.healthkit` in the phone app's entitlements, and
-`NSHealthShareUsageDescription` — read-only, so no `NSHealthUpdateUsageDescription`. The
-HealthKit capability needs a provisioning profile that includes it, which an ad-hoc
-unsigned build (plan 01's posture) cannot carry; **this is the first Victual capability
-that needs a signing team that includes the HealthKit capability and a registered device;** the maintainer has a developer-enrolled team and phone. The team ID must survive project
-generation; see [Phase 1b](#phase-1b--xcode-project-configuration). The usage string is
-the only thing a person reads before consenting, so it says what is read, that it is
+The phone app's entitlements gain `com.apple.developer.healthkit`, and its Info.plist gains
+`NSHealthShareUsageDescription`. Access is read-only, so there is no
+`NSHealthUpdateUsageDescription`.
+
+The HealthKit capability needs a provisioning profile that includes it, which an ad-hoc
+unsigned build (plan 01's posture) cannot carry. This is the first Victual capability that
+needs a signing team with the HealthKit capability and a registered device. The maintainer
+has a developer-enrolled team and phone. The team ID must survive project generation; see
+[Phase 1b](#phase-1b--xcode-project-configuration).
+
+The usage string is the only thing a person reads before consenting, so it says what is read, that it is
 read-only, and that doses are sent to *their own* Victual server and nowhere else.
 
 ### Feature visibility
@@ -101,12 +105,12 @@ already warns through `ServerVersion`; no `isAtLeast` is needed.
 | `source_system` | constant `healthkit` | Matches the ADR's example. |
 | `source_event_id` | `HKObject.uuid.uuidString` | Fits `[A-Za-z0-9._:-]{1,128}`. Not stable across edits. |
 | `medication_ref` | derived from `medicationConceptIdentifier` | Server treats it as opaque, `^[A-Za-z0-9._:-]{1,128}$`. Opaque object with no documented string form. Candidates, in order: its `description`, if the spike shows it stable across launches and devices; else `hk:med:` + lowercase hex SHA-256 of its `NSKeyedArchiver` secure-coded bytes. **Neither is proven.** The spike records both and their stability. |
-| `status` | `logStatus` | See below. |
+| `status` | `logStatus` | See the status translation table that follows. |
 | `quantity` | `doseQuantity` | **Optional.** Omitted when `nil`; the client never substitutes a number. The mapping's `default_quantity` applies, or the event is `needs_review` / `quantity_missing`. |
 | `unit_label` | `unit.unitString` | Matched against the mapping's confirmed `unit_labels`; an unseen label is `needs_review` / `unit_unconfirmed` showing the exact string. What Health reports for "tablet" is unknown; spike item. |
 | `occurred_at` | `startDate` | RFC 3339 with the device's current offset. `scheduledDate` is *not* used: the person may take a dose hours late. |
 | `source_updated_at` | client observation time, optional | `HKObject` exposes no modification time. Excluded from the payload hash; sending it is harmless, omitting it is allowed. The outbox keeps the first value so a replay is byte-identical anyway. |
-| `replaces` | inferred, see below | The only place this client infers. |
+| `replaces` | inferred; see [Edits](#edits-and-the-replaces-inference) | The only place this client infers. |
 | `location_id` | the mapping's organizer choice | Sent when the mapping is `explicit`; otherwise omitted. |
 
 Status translation:
@@ -135,7 +139,7 @@ server to enforce it and saves traffic.
    after the outbox write, so a crash replays rather than loses.
 3. A sender drains the outbox with `PUT /consumption/events/healthkit/{id}`. The identity is
    in the path, so a retry is safe by construction and the client needs no idempotency
-   header. Offline simply leaves records queued.
+   header. Offline leaves records queued.
 4. Anchors are keyed by **(server, account, mapping set)**. Switching servers or users must
    not reuse another's anchor; re-mapping resets to `effectiveFrom`.
 5. Deleted objects arrive as `HKDeletedObject` carrying only a `uuid`. The client looks the
@@ -172,13 +176,15 @@ Server ADR rule 4: an event books only through a mapping the person approved. Th
 lists the authorized medications (`HKUserAnnotatedMedicationQueryDescriptor`; archived ones
 shown separately), and for each the person picks a Victual product or recipe, the unit it
 is counted in, an organizer location rule (fixed, single, explicit), and optionally a
-`default_quantity` for events Health records without one. The screen reads its choices from
-endpoints the server already has: unit conversions from
+`default_quantity` for events Health records without one.
+
+The screen reads its choices from endpoints the server already has: unit conversions from
 `/api/objects/quantity_unit_conversions_resolved?query[]=product_id=…` and a product's
 locations from `/api/stock/products/{id}/locations`. The mapping starts with an empty
-`unit_labels`; the first event with an unseen label surfaces as a prompt showing the exact
-string Health sent, and approving it calls `resolve` with `approve_unit`. The client does
-not match a medication name to a product, does not infer a conversion from a strength, and
+`unit_labels`. The first event with an unseen label surfaces as a prompt showing the exact
+string Health sent, and approving it calls `resolve` with `approve_unit`.
+
+The client does not match a medication name to a product, does not infer a conversion from a strength, and
 does not pick an organizer. `nickname` and `displayText` are shown to the person and
 **never sent**: the server needs an opaque reference, not a drug name.
 
@@ -267,13 +273,19 @@ The order is chosen so nothing is built on an unverified assumption longer than 
 
 A debug-only screen in the phone app that authorizes medications, runs the anchored
 query, and shows what arrives, **locally, with no network**. It records, for the
-[acceptance contract](#verification): iOS version and device, which fields are non-nil,
-`doseQuantity` and `unit.unitString` for a tablet, a liquid and a single-use item,
-what an edit emits (delete + new uuid, or an in-place change), what undo-in-Health emits
-(`notLogged` new sample or deletion), late-logged latency, whether the
-`medicationConceptIdentifier` is stable across launches and archives deterministically,
-background-delivery behavior, and what revoking a medication emits. Result: a table pasted
-into [Executed](#executed) and a go/no-go on items in [Open questions](#open-questions).
+[acceptance contract](#verification):
+
+- the iOS version and device, and which fields are non-nil;
+- `doseQuantity` and `unit.unitString` for a tablet, a liquid and a single-use item;
+- what an edit emits (delete and new uuid, or an in-place change);
+- what undo-in-Health emits (a `notLogged` sample, a deletion, or both);
+- late-logged latency;
+- whether `medicationConceptIdentifier` is stable across launches and archives
+  deterministically;
+- background-delivery behavior, and what revoking a medication emits.
+
+The result is a table pasted into [Executed](#executed) and a go/no-go on the
+[Open questions](#open-questions).
 
 Needs a physical iPhone on iOS 26+ with medications entered in Health. The household
 phones are iPhone 16s on iOS 27, and the maintainer's is developer-enrolled. The
@@ -282,15 +294,16 @@ simulator is not used; it has no medication data. The spike waits on the server 
 
 ### Phase 1 — model, sync engine and tests (no server, no HealthKit import)
 
-`VictualHealth` model target; `DoseEventSource` and `ConsumptionEventSubmitter` protocols;
-`Codable` request/response types matching ADR-0041's `.devtools/adr0041/` fragment; the
-outbox, anchor and ledger; status translation; the `replaces` heuristic; deletion-reason
-derivation. Unit tests
-against scripted sources and a fake submitter, covering the client half of the 17
-sequences. The types are written by hand, with a test that decodes the fragment's own examples so
-the two cannot drift quietly. Generating from the fragment was considered and rejected:
-it is a design file that #700 may change, and a generated target would have to be
-regenerated and re-reviewed on every revision. They are replaced, not wrapped, when the
+Deliverables: the `VictualHealth` model target; the `DoseEventSource` and
+`ConsumptionEventSubmitter` protocols; `Codable` request and response types matching
+ADR-0041's `.devtools/adr0041/` fragment; the outbox, anchor and ledger; status translation;
+the `replaces` heuristic; and deletion-reason derivation. Unit tests run against scripted
+sources and a fake submitter, and cover the client half of the 17 sequences.
+
+The types are written by hand, with a test that decodes the fragment's own examples so the
+two cannot drift quietly. Generating from the fragment was considered and rejected. It is a
+design file that #700 may change, and a generated target would have to be regenerated and
+re-reviewed on every revision. The hand-written types are replaced, not wrapped, when the
 routes reach `victual.openapi.json`.
 
 ### Phase 1b — Xcode project configuration
@@ -363,11 +376,16 @@ a product from a medication. App Intents, which stay with the Siri concept.
 
 ## Verification
 
-1. `swift test` — Phase 1 suites: status translation, field mapping, outbox ordering and
-   crash replay, anchor persistence keyed per server/account, deletion by ledger lookup,
-   each row of the deletion-reason table (and that a bare deletion never sends
-   `entered_in_error`), the burst coalescing, a nil `doseQuantity` omitted, the `replaces` heuristic positive and negative cases, key lapse
-   (401) surfacing as a failure state, and the capabilities check (404 on an older server hides the screen).
+1. `swift test` runs the Phase 1 suites:
+   - status translation and field mapping;
+   - outbox ordering and crash replay;
+   - anchor persistence keyed per server and account;
+   - deletion by ledger lookup, each row of the deletion-reason table, and that a bare
+     deletion never sends `entered_in_error`;
+   - burst coalescing, and a nil `doseQuantity` omitted;
+   - the `replaces` heuristic, positive and negative cases;
+   - a key lapse (401) surfacing as a failure state;
+   - the capabilities check, where a 404 on an older server hides the screen.
 2. The macOS application still builds and does not link `VictualHealth`.
 3. CI's `phone` job builds with the HealthKit entitlement, on the iOS 26+ SDK.
 4. **On a device (cannot be done in CI or the simulator).** Against a Victual 0.5.0
