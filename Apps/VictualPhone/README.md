@@ -29,13 +29,41 @@ supported in the simulator at all. The simulator still runs the rest, and scanni
 photo works there.
 
 ```
+brew install xcodegen
+cp Apps/Local.xcconfig.example Apps/Local.xcconfig   # once; put your Team ID in it
 cd Apps/VictualPhone
 xcodegen generate
 open VictualPhone.xcodeproj
 ```
 
-Then in Xcode: pick your team under **Signing & Capabilities** (it is not committed), trust
-the `OpenAPIGenerator` plugin when asked, choose the phone as the destination, and run.
+Then in Xcode: pick the **VictualPhone** scheme, trust the `OpenAPIGenerator` plugin when
+asked, choose the phone (or a simulator) as the destination, and run. The first run on a
+device needs Developer Mode on the phone and a trip to Settings > General > VPN & Device
+Management if the profile is not yet trusted.
+
+`Apps/Local.xcconfig` is gitignored and holds `DEVELOPMENT_TEAM`, read by `project.yml`
+through `Apps/Base.xcconfig`. It lives outside the generated project, so `xcodegen
+generate` cannot wipe it; setting the team in the Signing pane instead is lost on the next
+generate. Debug uses automatic signing. Without the file everything still builds for the
+simulator, unsigned, which is what CI does (`CODE_SIGNING_ALLOWED=NO`).
+
+### HealthKit
+
+`Resources/VictualPhone.entitlements` (generated from `project.yml`) carries
+`com.apple.developer.healthkit`, and `Info.plist` carries `NSHealthShareUsageDescription`:
+read-only, so there is no `NSHealthUpdateUsageDescription`. A device build needs a
+provisioning profile that includes the HealthKit capability; with automatic signing and a
+team set, Xcode requests it when you first build for the device. An unsigned build ignores
+the entitlement, so CI is unaffected. See
+[plan 03](../../docs/plans/03-healthkit-medication-sync.md).
+
+### Tests
+
+The scheme's Test action (**Cmd-U**) runs the package's four test targets, as on the Mac;
+pick a simulator or device destination. `swift test` at the repository root runs the same
+tests. The app has no test target of its own. When the `VictualHealth` package target
+lands, add its test target under the scheme's `test:` in `project.yml` and its product to
+the app's `dependencies`.
 
 A household instance on plain `http` on the LAN is allowed (`NSAllowsLocalNetworking`);
 anything reached over the internet still needs TLS.
