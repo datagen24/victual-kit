@@ -22,3 +22,6 @@ __pycache__/
 .devtools/vale/.bin/
 .docs-build/
 site/
+
+## Per-developer signing settings (see Apps/Local.xcconfig.example)
+Apps/Local.xcconfig

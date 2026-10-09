@@ -1,0 +1,6 @@
+// Settings shared by both applications' generated projects.
+//
+// Local.xcconfig is each developer's own and is not committed (see
+// Local.xcconfig.example). `#include?` is the optional form: when the file is
+// absent, as on CI, nothing happens and the build stays unsigned-capable.
+#include? "Local.xcconfig"
