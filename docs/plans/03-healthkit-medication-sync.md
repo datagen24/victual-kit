@@ -42,7 +42,7 @@ has been observed on a device; the [device spike](#phase-0--device-spike) exists
 | `HKMedicationDoseEvent` is an `HKSample`. Fields: `medicationConceptIdentifier`, `logStatus`, `scheduleType`, `doseQuantity: Double?`, `scheduledDoseQuantity: Double?`, `scheduledDate: Date?`, `unit: HKUnit`, plus `startDate`/`endDate`/`uuid` from `HKSample`. | Reference. | `doseQuantity` is **optional**. See the [mapping table](#field-mapping). |
 | `logStatus` has six cases: `taken`, `skipped`, `snoozed`, `notInteracted`, `notificationNotSent`, `notLogged`. `notLogged` is "the person undoes a previously logged medication status". | `LogStatus` reference. | ADR-0041 has four statuses; `notLogged` has no home. Server feedback 2. |
 | `scheduleType` is `.schedule` or `.asNeeded`. | `ScheduleType` reference. | Used only for the `replaces` heuristic. |
-| `HKMedicationConcept.identifier` is an `HKHealthConceptIdentifier`: an **opaque `NSSecureCoding` object**, not a string. It exposes only `domain`. The session says it is stable across devices and time. | Reference; session. | `medication_ref` must be *derived* from it. Server feedback 4. |
+| `HKMedicationConcept.identifier` is an `HKHealthConceptIdentifier`: an **opaque `NSSecureCoding` object**, not a string; it documents only `domain`. It does conform to `CustomStringConvertible`, but no stable, meaningful string form is documented. The session says the identifier is stable across devices and time. | Reference; session. | `medication_ref` must be derived from it. Server feedback 4. |
 | Medications are **per-object authorized**: `requestPerObjectReadAuthorization(for:predicate:)` shows a sheet where the person ticks medications. It **always prompts**, even if already granted. Authorizing a medication grants its dose events. `requestAuthorization(toShare:read:)` for these types fails `errorInvalidArgument`. | Reference; session. | Authorization is an explicit, user-initiated "Choose medications" action. Never on launch. |
 | Medication data is **read-only** to third parties. | Apple DTS reply, [forum thread 803954](https://developer.apple.com/forums/thread/803954). | Request read only; never `toShare`. `NSHealthShareUsageDescription` only. |
 | Dose events can be logged retroactively and **edited by delete-and-recreate**; handle deletions from `HKAnchoredObjectQuery`. | Session. | `HKObject.uuid` is not a stable dose identity. See [replaces](#edits-and-the-replaces-inference). |
@@ -78,7 +78,7 @@ decide whether the Medications screen exists at all.
 `NSHealthShareUsageDescription` — read-only, so no `NSHealthUpdateUsageDescription`. The
 HealthKit capability needs a provisioning profile that includes it, which an ad-hoc
 unsigned build (plan 01's posture) cannot carry; **this is the first Victual capability
-that cannot be exercised without a real team and a registered device.** The usage string is
+that needs a signing team that includes the HealthKit capability and a registered device;** whether a free personal team suffices is left to the spike. The usage string is
 the only thing a person reads before consenting, so it says what is read, that it is
 read-only, and that doses are sent to *their own* Victual server and nowhere else.
 
@@ -97,7 +97,7 @@ already warns; this adds a *minimum*, which `ServerVersion` does not yet express
 | --- | --- | --- |
 | `source_system` | constant `healthkit` | Matches the ADR's example. |
 | `source_event_id` | `HKObject.uuid.uuidString` | Fits `[A-Za-z0-9._:-]{1,128}`. Not stable across edits. |
-| `medication_ref` | derived from `medicationConceptIdentifier` | Opaque object, no string form. Proposed: `hk:med:` + lowercase hex SHA-256 of its `NSKeyedArchiver` secure-coded bytes. **Unproven** that the archive is deterministic; the spike records `debugDescription` and archive equality across launches. |
+| `medication_ref` | derived from `medicationConceptIdentifier` | Opaque object with no documented string form. Candidates, in order: its `description`, if the spike shows it stable across launches and devices; else `hk:med:` + lowercase hex SHA-256 of its `NSKeyedArchiver` secure-coded bytes. **Neither is proven.** The spike records both and their stability. |
 | `status` | `logStatus` | See below. |
 | `quantity` | `doseQuantity` | **Optional.** A `taken` event with `nil` quantity is *held locally* and flagged, not sent with a guessed 1. Server feedback 5 asks the contract to say what the mapping's default does. |
 | `unit_label` | `unit.unitString` | Compared by exact string by the server. What Health reports for "tablet" is unknown; spike item. |
@@ -223,8 +223,8 @@ maintainer; no comment has been posted to #702, #696 or #711 — that needs auth
    carries a *different* value and trips `same_version_different_payload` (409) for no
    reason. A replay must reuse the original value; the outbox stores it. State this.
 4. **`medication_ref` character set and length.** It sits in a URL path. Give it a pattern
-   (the ADR gives `source_event_id` one). `HKHealthConceptIdentifier` has no string form, so
-   the proposal above hex-encodes a hash; the server should accept `^[A-Za-z0-9._:-]{1,128}$`.
+   (the ADR gives `source_event_id` one). `HKHealthConceptIdentifier` documents no string form, so
+   the fallback above hex-encodes a hash; the server should accept `^[A-Za-z0-9._:-]{1,128}$`.
 5. **`quantity` when HealthKit has none.** `doseQuantity` is optional. Say whether a
    mapping can hold a default quantity, or the event goes to `needs_review`
    (`missing_quantity`). The client will not invent one.
