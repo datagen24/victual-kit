@@ -40,10 +40,17 @@ worth knowing rather than planning around.
 
 ```
 brew install xcodegen
+cp Apps/Local.xcconfig.example Apps/Local.xcconfig   # once; put your Team ID in it
 cd Apps/Victual
 xcodegen generate
 open Victual.xcodeproj
 ```
+
+Pick the **Victual** scheme and run. `Apps/Local.xcconfig` is gitignored and holds
+`DEVELOPMENT_TEAM`, which `project.yml` reads through `Apps/Base.xcconfig`. It lives outside
+the generated project, so `xcodegen generate` cannot wipe it; setting the team in Xcode's
+Signing pane instead is lost on the next generate. Without the file everything still
+builds, unsigned or ad-hoc, which is what CI does.
 
 `project.yml` is the source of truth; `Victual.xcodeproj`, `Resources/Info.plist` and
 `Resources/Victual.entitlements` are generated from it and are not committed. Re-run
@@ -52,6 +59,14 @@ open Victual.xcodeproj
 out of it.
 
 CI does the same thing on every pull request, in the `app` job.
+
+### Tests
+
+The scheme's Test action (**Cmd-U**) runs the package's four test targets
+(`VictualAPITests`, `VictualCoreTests`, `VictualUITests`, `VictualStockTests`), so the
+whole suite runs from the IDE. `swift test` at the repository root runs the same tests.
+The app has no test target of its own: its logic lives in the package. When a new package
+test target is added, list it under the scheme's `test:` in `project.yml`.
 
 ## Signing
 
