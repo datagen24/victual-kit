@@ -349,15 +349,17 @@ cases for each item the person takes:
 
 1. **In Health and in Victual.** Map the medication to the product, its unit, an organizer
    and an optional default quantity, as in [Mapping](#mapping-the-person-decides-the-client-never-guesses).
-2. **In Health, not in Victual.** Offer to create the product, which needs
-   `MASTER_DATA_EDIT` on the key. Without it, the wizard says so and skips the item.
+2. **In Health, not in Victual.** Name what is missing and hand off to the web UI. Creating
+   a product or a unit conversion needs the whole-household `MASTER_DATA_EDIT` right
+   ([victual#742](https://github.com/datagen24/victual/issues/742)), so the wizard writes
+   no master data and skips the item until it exists.
 3. **In Victual, not in Health.** There is nothing to sync. The item is consumed by hand,
    through a consumption recipe, which the server already supports.
 
-The wizard never creates anything without the person confirming it, never infers a product
-from a medication name, and can be left half done: each item is settled independently, and
-unsettled ones appear as "needs mapping". Whether it also creates Victual products is
-[open question 7](#open-questions).
+The wizard never infers a product from a medication name, and can be left half done: each
+item is settled independently, and unsettled ones appear as "needs mapping". It also tells
+the person up front what to enter in Victual before mapping, including any unit conversion
+a mapping needs.
 
 ### Phase 3 — against a real server
 
@@ -411,10 +413,13 @@ a product from a medication. App Intents, which stay with the Siri concept.
    dose is intended to be one event (ADR rule 1: yes) and that a mapping edited on one
    phone applies to the other.
 
-7. **Does the wizard create Victual products?** Creating them makes first-run quick for a
-   household with nothing entered, but needs `MASTER_DATA_EDIT` and a decision on defaults
-   such as unit, storage class and minimum stock. Mapping only to existing products is
-   simpler and never writes master data.
+7. **Does the wizard create Victual products?**
+
+   > **Response (2026-10-09):** no. Creating a product or conversion needs
+   > `MASTER_DATA_EDIT`, which is effectively the household administrator, and the
+   > maintainer has asked for the server's authorization model to be audited for similar
+   > gaps ([victual#742](https://github.com/datagen24/victual/issues/742)). Until that
+   > settles, the client maps only to existing products and hands off for the rest.
 
 ## Verification
 
