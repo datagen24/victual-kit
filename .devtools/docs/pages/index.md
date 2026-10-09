@@ -15,7 +15,7 @@ Its API layer is generated from the server's OpenAPI document, and
 [Tracking the specification](package/openapi.md) records how that document is vendored,
 which server release it is pinned to, and what the normalizer repairs.
 
-The package needs a Victual server at **0.3.0**.
+The package needs a Victual server at **0.3.2**.
 
 ## The applications
 

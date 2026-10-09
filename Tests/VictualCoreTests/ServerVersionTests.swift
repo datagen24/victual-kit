@@ -25,7 +25,7 @@ struct ServerVersionTests {
     }
 
     @Test("Only a newer server warns", arguments: [
-        ("0.3.0", false), ("0.2.0-MVP", false), ("0.3.1", true), ("0.4.0", true),
+        ("0.3.2", false), ("0.3.0", false), ("0.2.0-MVP", false), ("0.3.3", true), ("0.4.0", true),
         ("1.0.0", true), (nil, false), ("dev", false),
     ] as [(String?, Bool)])
     func warning(reported: String?, warns: Bool) {
