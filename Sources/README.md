@@ -16,8 +16,9 @@ than a runtime surprise.
 | `VictualCore` | `VictualServer`, `VictualAPIKey`, `VictualClient`, `VictualError`, and Keychain-backed credential storage. |
 | `VictualUI` | `VictualSession` (`@Observable`), the SwiftUI environment key, and a ready-made `VictualConnectionView`. |
 | `VictualStock` | Observable stores over the client — what a connection is used for. No views. |
+| `VictualHealth` | Medication dose sync: the dose model, the outbox/anchor/ledger engine and the ADR-0041 wire types. Imports no HealthKit; a HealthKit adapter plugs in behind `DoseEventSource`. |
 
-`VictualUI` and `VictualStock` both depend on `VictualCore`, which depends on
+`VictualUI`, `VictualStock` and `VictualHealth` all depend on `VictualCore`, which depends on
 `VictualAPI`. Import the highest layer you need.
 
 ## Requirements

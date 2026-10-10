@@ -31,6 +31,8 @@ targets:
         product: VictualUI
       - package: VictualKit
         product: VictualStock
+      - package: VictualKit
+        product: VictualHealth
     # Generated output, like the .xcodeproj; not committed.
     info:
       path: Resources/Info.plist
@@ -73,6 +75,10 @@ targets:
         # What Xcode itself writes for a HealthKit app that reads no clinical
         # records.
         com.apple.developer.healthkit.access: []
+        # Needed before Health will accept enableBackgroundDelivery on iOS 15+.
+        # The device spike (plan 03 Phase 0) asks whether it works for dose
+        # events; without this key a rejection would say nothing about that.
+        com.apple.developer.healthkit.background-delivery: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.victual.VictualPhone

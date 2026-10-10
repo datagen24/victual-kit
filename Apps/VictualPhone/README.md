@@ -57,6 +57,31 @@ team set, Xcode requests it when you first build for the device. An unsigned bui
 the entitlement, so CI is unaffected. See
 [plan 03](../../docs/plans/03-healthkit-medication-sync.md).
 
+### HealthKit device spike (debug builds)
+
+Plan 03 Phase 0. A Debug build has **Settings > HealthKit spike** (top right); a Release
+build does not contain it. It needs a physical iPhone on iOS 26 or later with medications
+entered in the Health app (the simulator has none), and a signing team in
+`Apps/Local.xcconfig`. It makes no network request and writes nothing to Health.
+
+1. `cd Apps/VictualPhone && xcodegen generate`, open `VictualPhone.xcodeproj`, scheme
+   **VictualPhone**, destination your phone, Run. Automatic signing adds the HealthKit and
+   Background Delivery capabilities to the App ID on the first build.
+2. Connect to any Victual instance (the spike is behind the connection screen). Open
+   Settings, then **HealthKit spike**.
+3. **1. Choose medications** and tick the ones to test. Include a tablet, a liquid and a
+   single-use item if you have them. Each tap shows Health's sheet again, by design.
+4. **2. Start listening**, then in the Health app log doses on those medications: one taken
+   now, one skipped, one edited (change the quantity or time of a logged dose), one logged
+   then undone, and one logged for an earlier time. Return to the spike after each and
+   note the "s after start" for the dose you logged *now*.
+5. **3. Try background delivery** for whether Health accepts the registration.
+6. In Health, stop sharing one medication with Victual (Health > Sharing > Apps > Victual),
+   then press **4. Re-query after revoking one**.
+7. Quit and relaunch the app, press **1** and choose the same medications, to fill in "same
+   as last launch". Then **Share report**: plain text with no medication names, for the
+   plan's Executed section.
+
 ### Tests
 
 The scheme's Test action (**Cmd-U**) runs the package's four test targets, as on the Mac;

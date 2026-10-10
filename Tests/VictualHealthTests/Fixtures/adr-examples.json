@@ -1,0 +1,22 @@
+{
+  "needs_mapping": { "state": "needs_mapping", "reason": null, "replayed": false,
+    "source_system": "healthkit", "source_event_id": "6F1C0000A9" },
+  "booked": { "state": "booked", "transaction_id": "65f3a1b2c4d5e",
+    "source_system": "healthkit", "source_event_id": "6F1C0000A9",
+    "lines": [{ "product_id": 17, "amount": 1, "location_id": 9 }] },
+  "replay": { "state": "booked", "replayed": true,
+    "source_system": "healthkit", "source_event_id": "6F1C0000A9" },
+  "late": { "state": "booked", "source_system": "healthkit", "source_event_id": "B20D000001",
+    "lines": [{ "product_id": 17, "amount": 1, "used_date": "2026-10-07" }] },
+  "replaces": { "state": "booked", "source_system": "healthkit", "source_event_id": "C7E4000055",
+    "replaces": { "source_event_id": "B20D000001", "state": "voided" } },
+  "voided": { "state": "voided", "source_system": "healthkit", "source_event_id": "C7E4000055" },
+  "insufficient_stock": { "state": "needs_review", "reason": "insufficient_stock",
+    "source_system": "healthkit", "source_event_id": "D1A0000077" },
+  "ambiguous_location": { "state": "needs_review", "reason": "ambiguous_location",
+    "candidate_location_ids": [9, 11],
+    "source_system": "healthkit", "source_event_id": "E5B8000012" },
+  "request_taken": { "status": "taken", "medication_ref": "hk:med:42", "quantity": 1,
+    "unit_label": "tablet", "occurred_at": "2026-10-09T08:03:00-04:00",
+    "source_updated_at": "2026-10-09T08:03:05-04:00" }
+}
