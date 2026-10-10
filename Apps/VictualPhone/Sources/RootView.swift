@@ -129,6 +129,11 @@ private struct SettingsScreen: View {
         NavigationStack {
             VictualConnectionView(session: session)
                 .navigationTitle("Settings")
+                #if DEBUG
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) { MedicationSpikeLink() }
+                }
+                #endif
         }
     }
 }
