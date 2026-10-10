@@ -494,9 +494,9 @@ Event and mapping calls are built against a fake, because there is nothing real 
   recipes. ADR-0040 keeps a consumption recipe out of `recipes` (it is a separate, owned
   list with its own routes, #698), and `/objects/recipes` returns *food* recipes, which are
   not valid targets. The catalog therefore offers no recipes until those routes exist.
-- The phone ships `UnsupportedMedicationBackend`, which answers `notFound` everywhere, so a
-  release build reports an older server and shows no Medications entry (the truth for 0.3.x).
-  Debug builds have a "Demo medication server" switch in Settings: real catalog, in-memory
+- At that point the phone shipped a stand-in that answered `notFound` everywhere, so a release
+  build showed no Medications entry (the truth for 0.3.x). Phase 3 below replaced it with the
+  real service. Debug builds have a "Demo medication server" switch in Settings: real catalog, in-memory
   events and mappings (`DemoMedicationBackend`).
 - The plan said `ConsumptionEventSubmitter` was enough. It was not: the mapping editor and
   the wizard need mapping routes (`PUT/GET/DELETE /consumption/mappings/…`), so
