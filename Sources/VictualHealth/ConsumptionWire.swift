@@ -153,6 +153,8 @@ public enum ConsumptionReviewReason: String, CaseIterable, Sendable, Codable {
     case undoRefused = "undo_refused"
     case invalidMapping = "invalid_mapping"
     case sourceDeleted = "source_deleted"
+    /// The stock layer refused; ``ConsumptionEvent/message`` has its text.
+    case stockError = "stock_error"
 }
 
 /// A server event, as `PUT`, `GET`, `DELETE` and `resolve` return it.
@@ -162,6 +164,13 @@ public struct ConsumptionEvent: Sendable, Equatable, Codable {
         public var amount: Double?
         public var locationID: Int?
         public var usedDate: String?
+
+        public init(productID: Int? = nil, amount: Double? = nil, locationID: Int? = nil, usedDate: String? = nil) {
+            self.productID = productID
+            self.amount = amount
+            self.locationID = locationID
+            self.usedDate = usedDate
+        }
 
         enum CodingKeys: String, CodingKey {
             case productID = "product_id"
@@ -174,6 +183,11 @@ public struct ConsumptionEvent: Sendable, Equatable, Codable {
     public struct PossibleDuplicate: Sendable, Equatable, Codable {
         public var transactionID: String?
         public var occurredAt: RFC3339Timestamp?
+
+        public init(transactionID: String? = nil, occurredAt: RFC3339Timestamp? = nil) {
+            self.transactionID = transactionID
+            self.occurredAt = occurredAt
+        }
 
         enum CodingKeys: String, CodingKey {
             case transactionID = "transaction_id"
@@ -198,6 +212,8 @@ public struct ConsumptionEvent: Sendable, Equatable, Codable {
     public var sourceRemovedReason: String?
     /// The exact unit string Health sent, for `unit_unconfirmed`.
     public var unitLabelSeen: String?
+    /// With `stock_error`: the stock layer's refusal text, private to the event's user.
+    public var message: String?
 
     public init(
         sourceSystem: String = VictualHealth.sourceSystem,
@@ -228,6 +244,7 @@ public struct ConsumptionEvent: Sendable, Equatable, Codable {
         case sourceRemovedAt = "source_removed_at"
         case sourceRemovedReason = "source_removed_reason"
         case unitLabelSeen = "unit_label_seen"
+        case message
     }
 }
 
@@ -274,17 +291,36 @@ public struct ConsumptionCapabilities: Sendable, Equatable, Codable {
     }
 }
 
+/// What one event of a bulk resolve came back as.
+public struct BulkResolveOutcome: Sendable, Equatable {
+    public var sourceEventID: String
+    public var httpStatus: Int
+    /// The event after the action, when the server applied it.
+    public var event: ConsumptionEvent?
+    /// The server's refusal text, when it did not.
+    public var errorMessage: String?
+
+    public init(sourceEventID: String, httpStatus: Int, event: ConsumptionEvent? = nil, errorMessage: String? = nil) {
+        self.sourceEventID = sourceEventID
+        self.httpStatus = httpStatus
+        self.event = event
+        self.errorMessage = errorMessage
+    }
+}
+
 /// How events reach the server.
 ///
-/// A protocol rather than a `VictualClient` extension: `VictualClient` does not
-/// expose its transport outside `VictualCore`, and the routes are not in the
-/// generated client until #700. The real submitter is Phase 3. A `404` from
-/// `capabilities()` is `VictualError.notFound`, an older server.
+/// A protocol so tests and previews substitute a fake. ``VictualConsumptionService``
+/// is the real one. A `404` from `capabilities()` is `VictualError.notFound`, an
+/// older server.
 public protocol ConsumptionEventSubmitter: Sendable {
     /// `PUT`. Identity is in the path, so a retry of identical bytes is safe.
     func put(_ submission: ConsumptionEventSubmission, sourceEventID: String) async throws -> ConsumptionEvent
     /// `DELETE`, with `reason` only when the client can justify one.
     func delete(sourceEventID: String, reason: DeletionReason?) async throws -> ConsumptionEvent
     func resolve(sourceEventID: String, action: ResolutionAction) async throws -> ConsumptionEvent
+    /// `POST /consumption/events/resolve`: one action for up to 50 events. A
+    /// cleared history is one decision, not one per dose.
+    func resolve(sourceEventIDs: [String], action: ResolutionAction) async throws -> [BulkResolveOutcome]
     func capabilities() async throws -> ConsumptionCapabilities
 }

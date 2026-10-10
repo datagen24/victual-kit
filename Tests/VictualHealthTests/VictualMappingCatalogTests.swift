@@ -23,6 +23,8 @@ struct VictualMappingCatalogTests {
                         """
                 } else if path.contains("/objects/quantity_units") {
                     json = #"[{"id": 1, "name": "tablet"}, {"id": 2, "name": "bottle"}, {"id": 3, "name": "x"}]"#
+                } else if path.contains("/consumption/recipes") {
+                    json = #"[{"id": 4, "name": "Morning", "rights": {"consume": true}}, {"id": 5, "name": "Read only", "rights": {"consume": false}}]"#
                 } else if path.contains("/stock/products/17/locations") {
                     json = locationsHoldingProduct
                 } else if path.contains("/objects/locations_resolved") {
@@ -47,8 +49,8 @@ struct VictualMappingCatalogTests {
         #expect(products == [CatalogItem(id: 17, name: "Vitamin D")])
     }
 
-    @Test func recipesAreNotOfferedBecauseConsumptionRecipesAreNotListable() async throws {
-        #expect(try await VictualMappingCatalog(client: client()).recipes().isEmpty)
+    @Test func recipesAreConsumptionRecipesTheCallerMayConsume() async throws {
+        #expect(try await VictualMappingCatalog(client: client()).recipes() == [CatalogItem(id: 4, name: "Morning")])
     }
 
     @Test func locationsPreferWhereTheProductIs() async throws {

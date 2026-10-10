@@ -112,6 +112,14 @@ public final class MedicationSyncStore {
     /// Medications with doses in Health but no mapping.
     public private(set) var needsMapping: Set<String> = []
 
+    /// The feature names (ADR-0041 §"capabilities") this client relies on. The screen
+    /// is offered when the server lists all of them, never on a version number.
+    /// `batch`, `manual_consume` and the refill features are not needed to sync doses.
+    nonisolated public static let requiredFeatures: Set<String> = [
+        "events", "mappings", "bulk_resolve", "deletion_reasons", "not_logged", "default_quantity", "unit_labels",
+        "replaces",
+    ]
+
     private let source: any DoseEventSource
     private let submitter: any ConsumptionEventSubmitter
     private let storage: any SyncStateStore
@@ -128,7 +136,6 @@ public final class MedicationSyncStore {
     ///   - server: The instance's base URL as text. Keys the anchor.
     ///   - account: Who is signed in on that server. Keys the anchor.
     ///   - requiredFeatures: Feature names `GET /consumption/capabilities` must list.
-    ///     The fragment names none yet; Phase 3 fills this in from the merged contract.
     init(
         source: any DoseEventSource,
         submitter: any ConsumptionEventSubmitter,
@@ -136,7 +143,7 @@ public final class MedicationSyncStore {
         server: String,
         account: String,
         mappings: MappingSet = MappingSet(),
-        requiredFeatures: Set<String> = [],
+        requiredFeatures: Set<String> = MedicationSyncStore.requiredFeatures,
         now: @escaping @Sendable () -> Date = { Date() },
         zone: @escaping @Sendable () -> TimeZone = { .current }
     ) {
@@ -162,7 +169,7 @@ public final class MedicationSyncStore {
         server: String,
         account: String,
         mappings: MappingSet = MappingSet(),
-        requiredFeatures: Set<String> = []
+        requiredFeatures: Set<String> = MedicationSyncStore.requiredFeatures
     ) {
         self.init(
             source: source, submitter: submitter, storage: FileSyncStateStore(directory: directory),
@@ -230,18 +237,18 @@ public final class MedicationSyncStore {
         await refresh()
     }
 
-    /// Applies `void` or `keep` to every deletion queued for one medication,
-    /// so a cleared history is one decision and not one per dose.
+    /// Applies `void` or `keep` to every deletion queued for one medication in one
+    /// bulk request (`POST /consumption/events/resolve`), so a cleared history is one
+    /// decision and not one call per dose.
     public func resolveDeletions(medicationRef: String, action: ResolutionAction) async {
         guard action == .void || action == .keep else { return }
         for case .sourceDeleted(let ref, let ids) in reviewRows where ref == medicationRef {
-            for id in ids {
-                do {
-                    try await engine.resolve(sourceEventID: id, action: action)
-                } catch {
-                    state = .failed(VictualError.mapping(error))
-                    break
+            do {
+                if let refused = try await engine.resolveBulk(sourceEventIDs: ids, action: action) {
+                    state = .failed(.badRequest(message: refused.errorMessage))
                 }
+            } catch {
+                state = .failed(VictualError.mapping(error))
             }
         }
         await refresh()

@@ -109,8 +109,9 @@ struct MedicationSyncStoreTests {
         #expect(store.reviewRows == [.sourceDeleted(medicationRef: "hk:med:42", eventIDs: ids)])
 
         await store.resolveDeletions(medicationRef: "hk:med:42", action: .keep)
-        let resolved = submitter.calls.filter { if case .resolve(_, .keep) = $0 { true } else { false } }
-        #expect(resolved.count == 5)
+        // One bulk request for the whole burst, not five.
+        let bulk = submitter.calls.filter { if case .resolveBulk = $0 { true } else { false } }
+        #expect(bulk == [.resolveBulk(ids: ids, action: .keep)])
     }
 
     @Test func unitUnconfirmedShowsTheExactStringAndApprovalResolvesIt() async {
@@ -174,7 +175,7 @@ struct MedicationSyncReentrancyTests {
         let source = ScriptedSource([Fixtures.batch([Fixtures.dose("D1")])])
         let store = MedicationSyncStore(
             source: source, submitter: submitter, storage: MemoryStateStore(), server: "s", account: "me",
-            mappings: MappingSet([Fixtures.mapping()]), now: { Fixtures.t0 }, zone: { Fixtures.zone })
+            mappings: MappingSet([Fixtures.mapping()]), requiredFeatures: [], now: { Fixtures.t0 }, zone: { Fixtures.zone })
         async let first: Void = store.sync()
         async let second: Void = store.sync()
         _ = await (first, second)

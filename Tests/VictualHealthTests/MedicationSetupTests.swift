@@ -40,13 +40,15 @@ struct MappingWireTests {
     }
 
     @Test func aProductDraftEncodesTheFragmentsKeys() throws {
-        var draft = product(factor: 30)
+        var draft = product(factor: 30)  // a unit other than the stock unit
+        draft.unit = CatalogUnit(id: 2, name: "box", factorToStockUnit: 30, isStockUnit: false)
         draft.defaultQuantityText = "1,5"
         let input = try #require(draft.input(in: zone))
         let object = try decodeJSON(JSONEncoder().encode(input))
         #expect(object["product_id"] as? Int == 17)
         #expect(object["recipe_id"] == nil)
-        #expect(object["quantity_factor"] as? Double == 30)
+        #expect(object["quantity_factor"] as? Double == 1)
+        #expect(object["qu_id"] as? Int == 2)
         #expect(object["default_quantity"] as? Double == 1.5)
         #expect((object["location"] as? [String: Any])?["location_id"] as? Int == 9)
         #expect(object["unit_labels"] as? [String] == [])
@@ -80,13 +82,33 @@ struct MappingWireTests {
         #expect(draft.input() != nil)
     }
 
-    @Test func explicitSendsTheOrganizerToo() throws {
+    @Test func onlyFixedStoresAnOrganizer() throws {
+        // The server refuses a location_id with single or explicit.
         var draft = product()
         draft.locationMode = .explicit
-        let input = try #require(draft.input(in: zone))
-        #expect(input.location == .init(mode: .explicit, locationID: 9))
+        #expect(try #require(draft.input(in: zone)).location == .init(mode: .explicit, locationID: nil))
+        draft.locationMode = .single
+        #expect(try #require(draft.input(in: zone)).location.locationID == nil)
+        draft.locationMode = .fixed
         draft.locationID = nil
         #expect(draft.problem != nil)
+    }
+
+    @Test func theStockUnitIsSentAsNoUnit() throws {
+        let object = try decodeJSON(JSONEncoder().encode(try #require(product().input(in: zone))))
+        #expect(object["qu_id"] == nil)
+    }
+
+    @Test func editingRestoresTheStoredUnit() throws {
+        var draft = product()
+        draft.unit = CatalogUnit(id: 2, name: "box", factorToStockUnit: 30, isStockUnit: false)
+        let stored = ConsumptionMapping(medicationRef: "r", input: try #require(draft.input(in: zone)))
+        var again = MappingDraft(editing: stored)
+        again.selectStoredUnit(from: [CatalogUnit(id: 1, name: "tablet", factorToStockUnit: 1, isStockUnit: true), CatalogUnit(id: 2, name: "box", factorToStockUnit: 30, isStockUnit: false)])
+        #expect(again.unit?.id == 2)
+        var stock = MappingDraft(editing: ConsumptionMapping(medicationRef: "r", input: try #require(product().input(in: zone))))
+        stock.selectStoredUnit(from: [CatalogUnit(id: 1, name: "tablet", factorToStockUnit: 1, isStockUnit: true)])
+        #expect(stock.unit?.id == 1)
     }
 
     @Test func editingKeepsConfirmedUnitLabels() throws {
@@ -95,7 +117,7 @@ struct MappingWireTests {
         let mapping = ConsumptionMapping(medicationRef: "r", input: try #require(draft.input(in: zone)))
         let again = MappingDraft(editing: mapping)
         #expect(again.unitLabels == ["tablet"])
-        #expect(again.unit == nil)  // the server stores a factor, not a unit
+        #expect(again.unit == nil)  // restored later, from the product's unit list
     }
 }
 

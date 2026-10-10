@@ -512,3 +512,33 @@ Event and mapping calls are built against a fake, because there is nothing real 
   "needs mapping"; the predicate's start date moves between calls while the anchor key stays
   fixed. Whether HealthKit tolerates that under a reused anchor is unverified, and nothing is
   sent in that state, so the spike should note it if it misbehaves.
+
+### Phase 3 code (provisional spec)
+
+Re-vendored from Victual master `d62efe9` (spec sha256 `e7468093…b1b8`, recorded in
+`openapi/spec-lock.json`; `info.version` is still 0.3.2, so no version moved). **Provisional**:
+victual#701 is open. Re-run `Scripts/update-openapi.py` for the final handoff.
+
+- `VictualClient.send(_:path:query:body:operationID:)` and `decode(_:from:)` are public, and
+  `VictualConsumptionService` is the real `ConsumptionEventSubmitter` and
+  `ConsumptionMappingService`. Responses decode into the generated `ConsumptionExternalEvent`
+  and bulk-result types and are adapted. Requests stay hand-written, because an outbox record
+  must replay byte-identically (the generated request type holds a `Date`), and capabilities
+  and mappings stay hand-written because a generated `@frozen` enum would fail on a feature
+  name a newer server adds. `WireContractTests` pins the hand-written enums to the spec.
+- `resolveDeletions` uses `POST /consumption/events/resolve`, 50 per request.
+- The Medications entry is gated on `GET /consumption/capabilities` listing
+  `MedicationSyncStore.requiredFeatures`, never on a version.
+- Mappings store the unit as `qu_id` (absent for the stock unit); editing restores it.
+  Consumption recipes are listed from `GET /consumption/recipes`.
+
+**Differences from this plan, found in the final schema:**
+
+- The server **refuses `location_id` for `single` and `explicit`**. This plan said `explicit`
+  sends "the mapping's organizer choice" with each event, but a mapping cannot store one.
+  The client therefore cannot name a per-dose organizer: `explicit` is not offered in the
+  editor, and a mapping set to it elsewhere sends no `location_id`, so its doses wait for
+  review as `ambiguous_location`.
+- The old `taken`-requires-`quantity` contradiction (victual#740) is fixed in the final
+  schema: `quantity` is optional, and a supplied one needs `unit_label`.
+- Unknown enum values from a newer server fail the decode and surface as a failed sync.

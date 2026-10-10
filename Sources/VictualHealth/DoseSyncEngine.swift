@@ -121,4 +121,16 @@ actor DoseSyncEngine {
         queue.results[sourceEventID] = result
         try await storage.saveQueue(queue, for: accountKey)
     }
+
+    /// One action for many events, in one request per 50. Events the server
+    /// refused keep their last known state; the first refusal is returned.
+    func resolveBulk(sourceEventIDs: [String], action: ResolutionAction) async throws -> BulkResolveOutcome? {
+        let outcomes = try await submitter.resolve(sourceEventIDs: sourceEventIDs, action: action)
+        var queue = try await storage.loadQueue(for: accountKey)
+        for outcome in outcomes {
+            if let event = outcome.event { queue.results[outcome.sourceEventID] = event }
+        }
+        try await storage.saveQueue(queue, for: accountKey)
+        return outcomes.first { $0.event == nil }
+    }
 }
