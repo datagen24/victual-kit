@@ -464,6 +464,41 @@ a product from a medication. App Intents, which stay with the Siri concept.
 
 ## Executed
 
-Not started. Written 2026-10-09 from the sources named above. The Apple reference pages
-were read; no HealthKit code has been compiled or run, and nothing has been exercised on
-a device.
+Written 2026-10-09 from the sources named above; extended 2026-10-10 with the code below.
+The Apple reference pages were read and the code compiles against the iOS 27 SDK, but
+**nothing has been run on a device**, so every HealthKit behaviour in the table of
+[What Apple provides](#what-apple-provides) is still the documented one, not the observed one.
+
+### Phase 0 code (device spike)
+
+`HealthKitDoseSource`, `MedicationRef` and `HealthKitSpike` in `VictualHealth`, and a
+debug-only screen in the phone app. How to run it is in `Apps/VictualPhone/README.md`.
+The spike result goes below, as the text its report produces.
+
+> *Spike results: not yet run.*
+
+### Phase 2 code (phone UI)
+
+Built against a fake, because the real transport cannot be written yet:
+
+- `VictualClient` keeps its authenticated transport (`channel`) `internal` and its generated
+  client has no `/consumption` routes, so neither `ConsumptionEventSubmitter` nor the new
+  `ConsumptionMappingService` can be implemented outside `VictualCore`. The missing piece is
+  a public way to send a request through the client's authentication and middleware chain
+  (a public `send(_:body:operationID:)`, or `Channel` made public). The same gap blocks the
+  mapping editor's read of `quantity_unit_conversions_resolved?query[]=…`: `listObjects` is
+  internal and takes no query.
+- The phone therefore ships `UnsupportedMedicationBackend`, which answers `notFound`
+  everywhere, so a release build reports an older server and shows no Medications entry (the
+  truth for 0.3.x). Debug builds have a "Demo medication server" switch in Settings that
+  runs the screens against `DemoMedicationBackend`, an in-memory server.
+- The plan said `ConsumptionEventSubmitter` was enough. It was not: the mapping editor and
+  the wizard need mapping routes (`PUT/GET/DELETE /consumption/mappings/…`), so
+  `ConsumptionMappingService` and `MappingCatalog` were added beside it. The device holds no
+  copy of a mapping beyond what the sync needs; the server's is authoritative.
+- ADR-0041's schema carries `quantity_factor`, not a unit id, so the editor's "unit" choice
+  is a stored factor, and re-opening a mapping asks for the unit again.
+- `explicit` location mode sends the mapping's organizer with each event, as this plan's
+  field table says, so the editor asks for an organizer for `explicit` as well as `fixed`.
+- `VictualClient.currentUserID()` (`GET /user`) keys the queue and anchor by person, since
+  an API key rotates.

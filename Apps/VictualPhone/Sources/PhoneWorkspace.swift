@@ -27,6 +27,8 @@ final class PhoneWorkspace {
     let capabilities: CapabilityGate
     let poller: ChangePoller
     let scanner: ScanStore
+    /// Medication sync, when this phone and server can do it. See ``MedicationsModel``.
+    let medications = MedicationsModel()
 
     /// The booking form currently shown, if any.
     var presentedBooking: BookingPresentation?
@@ -44,7 +46,8 @@ final class PhoneWorkspace {
     func start() async {
         async let capabilitiesLoad: Void = capabilities.load()
         async let stockLoad: Void = stock.refresh()
-        _ = await (capabilitiesLoad, stockLoad)
+        async let medicationsPrepare: Void = medications.prepare(client: client)
+        _ = await (capabilitiesLoad, stockLoad, medicationsPrepare)
         resume()
     }
 
@@ -53,6 +56,9 @@ final class PhoneWorkspace {
         poller.start { [weak self] in
             await self?.stock.refresh()
         }
+        // Launch and return to the foreground are the only automatic medication
+        // syncs: background delivery waits on the device spike.
+        Task { await medications.foreground(canConsume: capabilities.canConsume) }
     }
 
     /// Stops polling. A phone in a pocket has no reason to ask the server
