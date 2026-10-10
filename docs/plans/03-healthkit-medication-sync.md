@@ -110,7 +110,7 @@ already warns through `ServerVersion`; no `isAtLeast` is needed.
 | `unit_label` | `unit.unitString` | Matched against the mapping's confirmed `unit_labels`; an unseen label is `needs_review` / `unit_unconfirmed` showing the exact string. What Health reports for "tablet" is unknown; spike item. |
 | `occurred_at` | `startDate` | RFC 3339 with the device's current offset. `scheduledDate` is *not* used: the person may take a dose hours late. |
 | `source_updated_at` | client observation time, optional | `HKObject` exposes no modification time. Excluded from the payload hash; sending it is harmless, omitting it is allowed. The outbox keeps the first value so a replay is byte-identical anyway. |
-| `replaces` | inferred; see [Edits](#edits-and-the-replaces-inference) | The only place this client infers. |
+| `replaces` | inferred; see [Edits](#edits-and-the-replaces-inference) | One of two places this client infers; the other is `notLogged` matching, below. |
 | `location_id` | the mapping's organizer choice | Sent when the mapping is `explicit`; otherwise omitted. |
 
 Status translation:
@@ -258,12 +258,16 @@ and none of it has met a real HealthKit payload. What remains for the maintainer
    [Edits](#edits-and-the-replaces-inference). The server voids exactly the event named,
    which is what this client needs; whether the server should *also* verify the pairing is
    for the maintainer. This client would not rely on it.
-3. **Bulk resolution.** `history_cleared` reaches the server as many `unknown` deletions,
-   each its own `needs_review` row. A person clearing a medication's history would face
-   one `void`/`keep` per dose. Ask for a batched `resolve` (or `resolve` by `reason` and
-   mapping) so the review inbox is not N taps.
-4. **#702 has no victual-kit link.** This plan is the candidate. Linking it needs the
-   maintainer's authorization, which has not been given on this side either.
+3. **Bulk resolution.** Landed on 2026-10-09: ADR-0041 gained a bulk resolve route
+   (`POST /consumption/events/resolve`), which answers the request that `history_cleared`
+   arrives as many `unknown` deletions. `MedicationSyncStore.resolveDeletions` still
+   resolves one event at a time; Phase 3 moves it to the bulk route.
+4. **Fragment contradictions.** [victual#740](https://github.com/datagen24/victual/issues/740)
+   records three: the fragment requires `quantity` for a `taken` event against the
+   `default_quantity` rule, the response schema lacks `replaces`, and `features[]` has no
+   named values. Phase 3 cannot gate on a feature until the last is fixed.
+5. **#702 has no victual-kit link.** This plan is the candidate; the maintainer has not yet
+   asked for the link to be posted.
 
 ## Phasing
 
@@ -322,6 +326,41 @@ A Medications screen under Settings: choose medications, map each, sync status (
 synced", failures, held events), and a list of events needing the person. Presentation of
 `needs_review` reasons comes from the server's `reason`, unrewritten.
 
+### Phase 1 decisions
+
+Phase 1 ([victual-kit#10](https://github.com/datagen24/victual-kit/pull/10)) made two choices
+the maintainer reviewed on 2026-10-09.
+
+- **Unmapped medications are not sent.** The plan first said to send one event and receive
+  `needs_mapping`. That would upload history with no `effective_from`, so the client shows
+  "needs mapping" and sends nothing until the person approves a mapping. Sequence 1 is
+  therefore exercised on the server fixtures and not by this client. Accepted.
+- **`notLogged` matching is a second inference.** A `notLogged` sample may arrive with a fresh
+  uuid the server has never seen. The client then sends `not_logged` to the already-sent
+  `taken` id for the same medication, when exactly one dose matches on scheduled date or
+  start time, and sends nothing otherwise. **Pending the device spike**, which must show
+  whether `notLogged` arrives as a new sample at all. If it does not, this code is removed.
+
+### Setup wizard
+
+The maintainer's own household shows why a mapping screen alone is not enough. Not every
+vitamin is in Apple Health, and none is in Victual yet. A first-run wizard covers three
+cases for each item the person takes:
+
+1. **In Health and in Victual.** Map the medication to the product, its unit, an organizer
+   and an optional default quantity, as in [Mapping](#mapping-the-person-decides-the-client-never-guesses).
+2. **In Health, not in Victual.** Name what is missing and hand off to the web UI. Creating
+   a product or a unit conversion needs the whole-household `MASTER_DATA_EDIT` right
+   ([victual#742](https://github.com/datagen24/victual/issues/742)), so the wizard writes
+   no master data and skips the item until it exists.
+3. **In Victual, not in Health.** There is nothing to sync. The item is consumed by hand,
+   through a consumption recipe, which the server already supports.
+
+The wizard never infers a product from a medication name, and can be left half done: each
+item is settled independently, and unsettled ones appear as "needs mapping". It also tells
+the person up front what to enter in Victual before mapping, including any unit conversion
+a mapping needs.
+
 ### Phase 3 — against a real server
 
 When Victual #700 lands and 0.5.0 ships: regenerate (`Scripts/` sync), delete the
@@ -374,6 +413,14 @@ a product from a medication. App Intents, which stay with the Siri concept.
    dose is intended to be one event (ADR rule 1: yes) and that a mapping edited on one
    phone applies to the other.
 
+7. **Does the wizard create Victual products?**
+
+   > **Response (2026-10-09):** no. Creating a product or conversion needs
+   > `MASTER_DATA_EDIT`, which is effectively the household administrator, and the
+   > maintainer has asked for the server's authorization model to be audited for similar
+   > gaps ([victual#742](https://github.com/datagen24/victual/issues/742)). Until that
+   > settles, the client maps only to existing products and hands off for the rest.
+
 ## Verification
 
 1. `swift test` runs the Phase 1 suites:
@@ -394,7 +441,7 @@ a product from a medication. App Intents, which stay with the Siri concept.
 
    | ADR-0041 sequence | Server fixture (#700) | Device evidence (#702) | This client's part |
    | --- | --- | --- | --- |
-   | 1 taken, no mapping | ✔ | ✔ real payload fields | send once, show "needs mapping" |
+   | 1 taken, no mapping | ✔ | ✔ real payload fields | not sent; shown as "needs mapping" (see Phase 1 decisions) |
    | 2 approve, retry → booked | ✔ | ✔ | mapping screen, one booking |
    | 3 same request twice / parallel | ✔ | | outbox never double-sends after crash |
    | 4 before `effective_from` | ✔ | | device-side filter too |
