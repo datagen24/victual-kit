@@ -21,8 +21,8 @@ final class MedicationsModel {
     private(set) var prepareError: VictualError?
 
     #if DEBUG
-    /// Debug builds can run the screens against an in-memory server, since the
-    /// real routes are not in the generated client yet. Never present in Release.
+    /// Debug builds can run the screens against an in-memory server, to try them
+    /// without writing to an instance. Never present in Release.
     var useDemoBackend: Bool = UserDefaults.standard.bool(forKey: MedicationsModel.demoKey) {
         didSet { UserDefaults.standard.set(useDemoBackend, forKey: Self.demoKey) }
     }
@@ -62,23 +62,21 @@ final class MedicationsModel {
         let source = HealthKitDoseSource()
         let directory = Self.directory
 
+        let service = VictualConsumptionService(client: client)
         let submitter: any ConsumptionEventSubmitter
         let mappingService: any ConsumptionMappingService
-        let catalog: any MappingCatalog
+        let catalog: any MappingCatalog = VictualMappingCatalog(client: client)
         #if DEBUG
         if useDemoBackend {
-            // The routes for events and mappings do not exist yet, so those are in
-            // memory. What the editor reads (products, units, organizers) does
-            // exist, so it reads the real instance and the demo maps real products.
+            // Events and mappings in memory, so the screens can be clicked through
+            // without writing anything to the instance; the catalog stays real.
             let demo = DemoMedicationBackend()
-            (submitter, mappingService, catalog) = (demo, demo, VictualMappingCatalog(client: client))
+            (submitter, mappingService) = (demo, demo)
         } else {
-            let none = UnsupportedMedicationBackend()
-            (submitter, mappingService, catalog) = (none, none, none)
+            (submitter, mappingService) = (service, service)
         }
         #else
-        let none = UnsupportedMedicationBackend()
-        (submitter, mappingService, catalog) = (none, none, none)
+        (submitter, mappingService) = (service, service)
         #endif
 
         let sync = MedicationSyncStore(

@@ -58,17 +58,21 @@ public struct ConsumptionMappingInput: Sendable, Equatable, Codable {
 
     public var productID: Int?
     public var recipeID: Int?
-    /// How many of the product's stock unit one unit of Health's quantity is.
-    /// Absent for a recipe, which takes its lines once per event.
+    /// A multiplier on the event quantity; `1` for a product target. Absent for a
+    /// recipe, which takes its lines once per event.
     public var quantityFactor: Double?
     public var location: Location
     public var effectiveFrom: RFC3339Timestamp
     public var unitLabels: [String]
     public var defaultQuantity: Double?
+    /// The quantity unit an event's quantity is expressed in (`qu_id`). `nil` is
+    /// the product's stock unit. A product target only.
+    public var unitID: Int?
 
     public init(
         productID: Int? = nil, recipeID: Int? = nil, quantityFactor: Double? = nil, location: Location,
-        effectiveFrom: RFC3339Timestamp, unitLabels: [String] = [], defaultQuantity: Double? = nil
+        effectiveFrom: RFC3339Timestamp, unitLabels: [String] = [], defaultQuantity: Double? = nil,
+        unitID: Int? = nil
     ) {
         self.productID = productID
         self.recipeID = recipeID
@@ -77,9 +81,11 @@ public struct ConsumptionMappingInput: Sendable, Equatable, Codable {
         self.effectiveFrom = effectiveFrom
         self.unitLabels = unitLabels
         self.defaultQuantity = defaultQuantity
+        self.unitID = unitID
     }
 
     enum CodingKeys: String, CodingKey {
+        case unitID = "qu_id"
         case productID = "product_id"
         case recipeID = "recipe_id"
         case quantityFactor = "quantity_factor"
@@ -167,13 +173,17 @@ public struct CatalogUnit: Sendable, Equatable, Identifiable {
     public var id: Int
     public var name: String
     /// How many of the product's stock unit one of this unit is: `1` for the stock
-    /// unit itself, the conversion factor otherwise.
+    /// unit itself, the conversion factor otherwise. Shown to the person; the server
+    /// converts from the unit's id.
     public var factorToStockUnit: Double
+    /// Whether this is the product's own stock unit, which a mapping sends as no unit.
+    public var isStockUnit: Bool
 
-    public init(id: Int, name: String, factorToStockUnit: Double) {
+    public init(id: Int, name: String, factorToStockUnit: Double, isStockUnit: Bool? = nil) {
         self.id = id
         self.name = name
         self.factorToStockUnit = factorToStockUnit
+        self.isStockUnit = isStockUnit ?? (factorToStockUnit == 1)
     }
 }
 
@@ -215,21 +225,24 @@ public struct MappingDraft: Sendable, Equatable {
     /// The unit conversion chosen for a product target.
     public var unit: CatalogUnit?
     public var locationMode: MappingLocation.Mode = .fixed
-    /// The organizer for `fixed`, and the one sent with each event for `explicit`.
-    /// `single` takes whichever one location holds enough, so it has none.
+    /// The organizer for `fixed`. `single` takes whichever one location holds enough
+    /// and `explicit` names it per event, so neither stores one (the server refuses it).
     public var locationID: Int?
     /// Text as typed, so "0." is not rejected mid-keystroke. Empty means none.
     public var defaultQuantityText = ""
     public var effectiveFrom: Date
     /// The confirmed unit strings, carried through an edit untouched.
     public var unitLabels: [String] = []
+    /// When editing: the unit the stored mapping names (`nil` is the stock unit), for
+    /// the editor to select once the product's units have loaded.
+    public private(set) var storedUnitID: Int?
 
     public init(effectiveFrom: Date) {
         self.effectiveFrom = effectiveFrom
     }
 
-    /// A draft that edits an existing mapping. The unit is not restored: the
-    /// server stores a factor, not the unit it came from, so the person picks again.
+    /// A draft that edits an existing mapping. The unit is restored from `qu_id`
+    /// once the product's units are known: see ``selectStoredUnit(from:)``.
     public init(editing mapping: ConsumptionMapping) {
         let input = mapping.input
         self.targetKind = input.recipeID == nil ? .product : .recipe
@@ -240,6 +253,13 @@ public struct MappingDraft: Sendable, Equatable {
         self.defaultQuantityText = input.defaultQuantity.map { String($0) } ?? ""
         self.effectiveFrom = input.effectiveFrom.date
         self.unitLabels = input.unitLabels
+        self.storedUnitID = input.unitID
+    }
+
+    /// Picks the unit a stored mapping named, from the product's unit list.
+    public mutating func selectStoredUnit(from units: [CatalogUnit]) {
+        guard unit == nil else { return }
+        unit = units.first { $0.id == storedUnitID } ?? (storedUnitID == nil ? units.first(where: \.isStockUnit) : nil)
     }
 
     /// The parsed default quantity: `nil` for none, and for text that is not a
@@ -259,7 +279,7 @@ public struct MappingDraft: Sendable, Equatable {
         case .recipe:
             if recipeID == nil { return "Choose the consumption recipe." }
         }
-        if locationMode != .single && locationID == nil { return "Choose the organizer to take from." }
+        if locationMode == .fixed && locationID == nil { return "Choose the organizer to take from." }
         let text = defaultQuantityText.trimmingCharacters(in: .whitespaces)
         if !text.isEmpty && defaultQuantity == nil { return "A default quantity must be a number above zero." }
         return nil
@@ -271,10 +291,12 @@ public struct MappingDraft: Sendable, Equatable {
         return ConsumptionMappingInput(
             productID: targetKind == .product ? productID : nil,
             recipeID: targetKind == .recipe ? recipeID : nil,
-            quantityFactor: targetKind == .product ? unit?.factorToStockUnit : nil,
-            location: .init(mode: locationMode, locationID: locationMode == .single ? nil : locationID),
+            quantityFactor: targetKind == .product ? 1 : nil,
+            // Only `fixed` carries a location: the server refuses one with `single` or `explicit`.
+            location: .init(mode: locationMode, locationID: locationMode == .fixed ? locationID : nil),
             effectiveFrom: RFC3339Timestamp(effectiveFrom, in: zone),
             unitLabels: unitLabels,
-            defaultQuantity: defaultQuantity)
+            defaultQuantity: defaultQuantity,
+            unitID: targetKind == .product && unit?.isStockUnit == false ? unit?.id : nil)
     }
 }

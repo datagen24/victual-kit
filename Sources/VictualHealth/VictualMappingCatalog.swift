@@ -1,4 +1,5 @@
 import Foundation
+import VictualAPI
 import VictualCore
 
 /// The mapping editor's choices, read from a real Victual instance.
@@ -8,11 +9,10 @@ import VictualCore
 /// locations that hold it. It reads and never writes, so it needs none of the
 /// medication routes and works against Victual 0.3.x.
 ///
-/// **Recipes are not listable yet.** A consumption recipe is not a row of
-/// `recipes` (ADR-0040): it is a separate, owned list with its own routes, which
-/// do not exist until victual#698. `GET /objects/recipes` returns *food* recipes,
-/// which are not valid mapping targets, so ``recipes()`` answers an empty list
-/// rather than offer the wrong thing.
+/// Recipes are the caller's **consumption recipes** (`GET /consumption/recipes`),
+/// not food recipes: ADR-0040 keeps them in a separate, owned list. Only a recipe the
+/// caller holds the `consume` right on is offered, since a mapping to any other would
+/// book nothing.
 public struct VictualMappingCatalog: MappingCatalog {
     private let client: VictualClient
 
@@ -26,7 +26,14 @@ public struct VictualMappingCatalog: MappingCatalog {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    public func recipes() async throws -> [CatalogItem] { [] }
+    public func recipes() async throws -> [CatalogItem] {
+        let response = try await client.send(.get, path: "/consumption/recipes", operationID: "listConsumptionRecipes")
+        let recipes = try client.decode([Components.Schemas.ConsumptionRecipeSummary].self, from: response.data)
+        return recipes.compactMap { recipe in
+            guard let id = recipe.id, let name = recipe.name, recipe.rights?.consume != false else { return nil }
+            return CatalogItem(id: id, name: name)
+        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
 
     /// The product's stock unit at factor 1, then every unit with a conversion into it.
     public func units(forProduct id: Int) async throws -> [CatalogUnit] {
@@ -35,7 +42,7 @@ public struct VictualMappingCatalog: MappingCatalog {
         async let units = client.quantityUnits()
         let names = Dictionary(try await units.map { ($0.id, $0.name) }) { first, _ in first }
 
-        var result = [CatalogUnit(id: product.stockUnitID, name: names[product.stockUnitID] ?? "Unit \(product.stockUnitID)", factorToStockUnit: 1)]
+        var result = [CatalogUnit(id: product.stockUnitID, name: names[product.stockUnitID] ?? "Unit \(product.stockUnitID)", factorToStockUnit: 1, isStockUnit: true)]
         var seen: Set<Int> = [product.stockUnitID]
         for conversion in try await conversions
         where conversion.toUnitID == product.stockUnitID && conversion.factor > 0 && !seen.contains(conversion.fromUnitID) {
@@ -43,7 +50,7 @@ public struct VictualMappingCatalog: MappingCatalog {
             result.append(
                 CatalogUnit(
                     id: conversion.fromUnitID, name: names[conversion.fromUnitID] ?? "Unit \(conversion.fromUnitID)",
-                    factorToStockUnit: conversion.factor))
+                    factorToStockUnit: conversion.factor, isStockUnit: false))
         }
         return result
     }

@@ -65,9 +65,13 @@ struct MappingEditor: View {
                 Picker("Take from", selection: $draft.locationMode) {
                     Text("This organizer").tag(MappingLocation.Mode.fixed)
                     Text("Whichever holds enough").tag(MappingLocation.Mode.single)
-                    Text("Each dose names it").tag(MappingLocation.Mode.explicit)
+                    // Offered only to show a mapping made elsewhere: this app has no
+                    // way to name an organizer per dose.
+                    if draft.locationMode == .explicit {
+                        Text("Each dose names it").tag(MappingLocation.Mode.explicit)
+                    }
                 }
-                if draft.locationMode != .single {
+                if draft.locationMode == .fixed {
                     Picker("Organizer", selection: $draft.locationID) {
                         Text("Choose…").tag(Int?.none)
                         ForEach(locations) { location in
@@ -160,7 +164,7 @@ struct MappingEditor: View {
         switch draft.locationMode {
         case .fixed: "Always takes from this organizer. If it holds too little, the dose waits for you; it never falls back to another."
         case .single: "Takes the dose only if exactly one organizer holds enough."
-        case .explicit: "Each dose is sent with this organizer."
+        case .explicit: "Set up elsewhere: each dose names its organizer. This app does not send one, so such doses wait for you."
         }
     }
 
@@ -191,6 +195,7 @@ struct MappingEditor: View {
                     return
                 }
                 units = try await catalog.units(forProduct: id)
+                draft.selectStoredUnit(from: units)
                 locations = try await catalog.locations(forProduct: id)
                 // The chosen unit may not exist for a newly chosen product.
                 if let unit = draft.unit, !units.contains(unit) { draft.unit = nil }

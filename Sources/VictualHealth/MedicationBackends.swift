@@ -1,23 +1,19 @@
 import Foundation
 import VictualCore
 
-/// What the phone ships with until the real transport exists: a server that has
-/// no medication routes.
+/// A server that has no medication routes, for tests and previews.
 ///
 /// Every call answers `notFound`, so ``MedicationSyncStore/checkAvailability()``
-/// reports an older server and the app offers no Medications screen. This is also
-/// the truth for Victual 0.3.x.
-///
-/// The real submitter is not writable from outside `VictualCore` today:
-/// `VictualClient` keeps its authenticated transport `internal` (the `channel`
-/// behind its one hand-written request), and the generated client has no
-/// `/consumption` routes until victual#700. Phase 3 replaces this.
+/// reports an older server and the app offers no Medications screen. The phone
+/// itself uses ``VictualConsumptionService``, which answers the same on a server
+/// without the routes.
 public struct UnsupportedMedicationBackend: ConsumptionEventSubmitter, ConsumptionMappingService, MappingCatalog {
     public init() {}
 
     public func put(_ submission: ConsumptionEventSubmission, sourceEventID: String) async throws -> ConsumptionEvent { throw VictualError.notFound }
     public func delete(sourceEventID: String, reason: DeletionReason?) async throws -> ConsumptionEvent { throw VictualError.notFound }
     public func resolve(sourceEventID: String, action: ResolutionAction) async throws -> ConsumptionEvent { throw VictualError.notFound }
+    public func resolve(sourceEventIDs: [String], action: ResolutionAction) async throws -> [BulkResolveOutcome] { throw VictualError.notFound }
     public func capabilities() async throws -> ConsumptionCapabilities { throw VictualError.notFound }
     public func mappings() async throws -> [ConsumptionMapping] { throw VictualError.notFound }
     public func put(_ input: ConsumptionMappingInput, medicationRef: String) async throws -> ConsumptionMapping { throw VictualError.notFound }
@@ -42,7 +38,8 @@ public actor DemoMedicationBackend: ConsumptionEventSubmitter, ConsumptionMappin
     private var refs: [String: String] = [:]
     private var capabilitiesAnswer: Result<ConsumptionCapabilities, VictualError>
 
-    public init(capabilities: Result<ConsumptionCapabilities, VictualError> = .success(.init(contractVersion: 1, features: []))) {
+    public init(capabilities: Result<ConsumptionCapabilities, VictualError> = .success(
+            .init(contractVersion: 1, features: MedicationSyncStore.requiredFeatures.sorted()))) {
         self.capabilitiesAnswer = capabilities
     }
 
@@ -106,6 +103,18 @@ public actor DemoMedicationBackend: ConsumptionEventSubmitter, ConsumptionMappin
         }
         events[sourceEventID] = event
         return event
+    }
+
+    public func resolve(sourceEventIDs: [String], action: ResolutionAction) async throws -> [BulkResolveOutcome] {
+        var outcomes: [BulkResolveOutcome] = []
+        for id in sourceEventIDs {
+            if let event = try? await resolve(sourceEventID: id, action: action) {
+                outcomes.append(BulkResolveOutcome(sourceEventID: id, httpStatus: 200, event: event))
+            } else {
+                outcomes.append(BulkResolveOutcome(sourceEventID: id, httpStatus: 404, errorMessage: "not found"))
+            }
+        }
+        return outcomes
     }
 
     public func capabilities() async throws -> ConsumptionCapabilities {

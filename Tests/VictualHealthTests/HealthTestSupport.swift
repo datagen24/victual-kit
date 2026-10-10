@@ -41,6 +41,7 @@ final class FakeSubmitter: ConsumptionEventSubmitter, @unchecked Sendable {
         case put(id: String, body: Data)
         case delete(id: String, reason: DeletionReason?)
         case resolve(id: String, action: ResolutionAction)
+        case resolveBulk(ids: [String], action: ResolutionAction)
     }
 
     private let lock = NSLock()
@@ -83,6 +84,14 @@ final class FakeSubmitter: ConsumptionEventSubmitter, @unchecked Sendable {
 
     func resolve(sourceEventID: String, action: ResolutionAction) async throws -> ConsumptionEvent {
         try record(.resolve(id: sourceEventID, action: action), id: sourceEventID, default: .booked)
+    }
+
+    func resolve(sourceEventIDs: [String], action: ResolutionAction) async throws -> [BulkResolveOutcome] {
+        try lock.withLock { _calls.append(.resolveBulk(ids: sourceEventIDs, action: action)) }
+        return try sourceEventIDs.map { id in
+            let event = try record(.resolve(id: id, action: action), id: id, default: .voided)
+            return BulkResolveOutcome(sourceEventID: id, httpStatus: 200, event: event)
+        }
     }
 
     func capabilities() async throws -> ConsumptionCapabilities {

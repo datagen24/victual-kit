@@ -1,8 +1,11 @@
 import Foundation
 import Testing
+import VictualAPI
+import VictualCore
 @testable import VictualHealth
 
-/// Keeps the hand-written wire types honest against ADR-0041's design fragment.
+/// Keeps the hand-written wire types honest against the vendored specification
+/// (`Sources/VictualAPI/openapi.json`, recorded in `openapi/spec-lock.json`).
 @Suite("ADR-0041 wire contract")
 struct WireContractTests {
     static func fixture(_ name: String) throws -> Data {
@@ -11,8 +14,17 @@ struct WireContractTests {
         return try Data(contentsOf: url)
     }
 
+    /// The repository root, from this file's own path.
+    static let repository = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+
+    static func spec() throws -> [String: Any] {
+        let data = try Data(contentsOf: repository.appendingPathComponent("Sources/VictualAPI/openapi.json"))
+        return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
     static func schemas() throws -> [String: [String: Any]] {
-        let root = try #require(JSONSerialization.jsonObject(with: fixture("consumption-events.openapi.json")) as? [String: Any])
+        let root = try Self.spec()
         let components = try #require(root["components"] as? [String: Any])
         return try #require(components["schemas"] as? [String: [String: Any]])
     }
@@ -21,7 +33,7 @@ struct WireContractTests {
     static func enumValues(_ schema: String, _ property: String) throws -> Set<String> {
         let properties = try #require(Self.schemas()[schema]?["properties"] as? [String: [String: Any]])
         let values = try #require(properties[property]?["enum"] as? [Any])
-        return Set(values.compactMap { $0 as? String })
+        return Set(values.compactMap { $0 as? String }).subtracting([""])
     }
 
     @Test func statusMatchesFragment() throws {
@@ -29,12 +41,8 @@ struct WireContractTests {
     }
 
     @Test func stateAndReasonMatchFragment() throws {
-        #expect(Set(ConsumptionEventState.allCases.map(\.rawValue)) == (try Self.enumValues("ConsumptionEvent", "state")))
-        #expect(Set(ConsumptionReviewReason.allCases.map(\.rawValue)) == (try Self.enumValues("ConsumptionEvent", "reason")))
-    }
-
-    @Test func errorKindsMatchFragment() throws {
-        #expect(Set(ConsumptionErrorBody.Kind.allCases.map(\.rawValue)) == (try Self.enumValues("Error", "error")))
+        #expect(Set(ConsumptionEventState.allCases.map(\.rawValue)) == (try Self.enumValues("ConsumptionExternalEvent", "state")))
+        #expect(Set(ConsumptionReviewReason.allCases.map(\.rawValue)) == (try Self.enumValues("ConsumptionExternalEvent", "reason")))
     }
 
     @Test func resolutionActionsMatchFragment() throws {
@@ -42,7 +50,7 @@ struct WireContractTests {
     }
 
     @Test func deletionReasonsMatchFragment() throws {
-        let root = try #require(JSONSerialization.jsonObject(with: Self.fixture("consumption-events.openapi.json")) as? [String: Any])
+        let root = try Self.spec()
         let paths = try #require(root["paths"] as? [String: [String: Any]])
         let delete = try #require(paths["/consumption/events/{source_system}/{source_event_id}"]?["delete"] as? [String: Any])
         let parameters = try #require(delete["parameters"] as? [[String: Any]])
@@ -62,15 +70,17 @@ struct WireContractTests {
     }
 
     @Test func eventPropertiesAreAllKnown() throws {
-        // Every property the fragment gives a ConsumptionEvent must decode into a field.
-        let properties = try #require(Self.schemas()["ConsumptionEvent"]?["properties"] as? [String: Any])
+        // Every property the spec gives an event is either a field or named here as
+        // deliberately not modelled (the client never reads them).
+        let properties = try #require(Self.schemas()["ConsumptionExternalEvent"]?["properties"] as? [String: Any])
         let all: [ConsumptionEvent.CodingKeys] = [
             .sourceSystem, .sourceEventID, .state, .reason, .replayed, .stale, .revision, .transactionID,
             .occurredAt, .sourceUpdatedAt, .lines, .candidateLocationIDs, .possibleDuplicates,
-            .sourceRemovedAt, .sourceRemovedReason, .unitLabelSeen,
+            .sourceRemovedAt, .sourceRemovedReason, .unitLabelSeen, .message,
         ]
         let keys = Set(all.map(\.stringValue))
-        #expect(keys == Set(properties.keys))
+        let notModelled: Set<String> = ["replaces", "recipe_id", "medication_ref"]
+        #expect(keys.union(notModelled) == Set(properties.keys))
     }
 
     @Test func adrExamplesDecode() throws {
@@ -113,8 +123,41 @@ struct WireContractTests {
     }
 
     @Test func capabilitiesDecode() throws {
-        let body = Data(#"{"contract_version":1,"features":["external_events"]}"#.utf8)
+        let body = Data(#"{"contract_version":1,"features":["events","a_feature_from_a_newer_server"]}"#.utf8)
         let capabilities = try JSONDecoder().decode(ConsumptionCapabilities.self, from: body)
-        #expect(capabilities == .init(contractVersion: 1, features: ["external_events"]))
+        #expect(capabilities == .init(contractVersion: 1, features: ["events", "a_feature_from_a_newer_server"]))
+    }
+
+    @Test func requiredFeaturesAreNamesTheSpecDefines() throws {
+        let paths = try #require(Self.spec()["paths"] as? [String: Any])
+        let get = try #require((paths["/consumption/capabilities"] as? [String: Any])?["get"] as? [String: Any])
+        let ok = try #require(((get["responses"] as? [String: Any])?["200"]) as? [String: Any])
+        let content = try #require(((ok["content"] as? [String: Any])?["application/json"]) as? [String: Any])
+        let properties = try #require(((content["schema"] as? [String: Any])?["properties"]) as? [String: Any])
+        let items = try #require(((properties["features"] as? [String: Any])?["items"]) as? [String: Any])
+        let known = Set((items["enum"] as? [String]) ?? [])
+        #expect(MedicationSyncStore.requiredFeatures.isSubset(of: known))
+        #expect(!MedicationSyncStore.requiredFeatures.isEmpty)
+    }
+
+    @Test func generatedEnumsAreCoveredByTheHandWrittenOnes() {
+        typealias E = Components.Schemas.ConsumptionExternalEvent
+        let states = Set(E.StatePayload.allCases.map(\.rawValue))
+        let reasons = Set(E.ReasonPayload.allCases.map(\.rawValue)).subtracting([""])
+        #expect(states == Set(ConsumptionEventState.allCases.map(\.rawValue)))
+        #expect(reasons == Set(ConsumptionReviewReason.allCases.map(\.rawValue)))
+    }
+
+    @Test func adrExamplesAdaptFromTheGeneratedType() throws {
+        let examples = try #require(JSONSerialization.jsonObject(with: Self.fixture("adr-examples")) as? [String: Any])
+        func adapted(_ name: String) throws -> ConsumptionEvent {
+            let data = try JSONSerialization.data(withJSONObject: try #require(examples[name]))
+            return try ConsumptionEvent(JSONDecoder().decode(Components.Schemas.ConsumptionExternalEvent.self, from: data))
+        }
+        #expect(try adapted("needs_mapping").state == .needsMapping)
+        #expect(try adapted("booked").lines?.first?.locationID == 9)
+        #expect(try adapted("replay").replayed == true)
+        #expect(try adapted("insufficient_stock").reason == .insufficientStock)
+        #expect(try adapted("ambiguous_location").candidateLocationIDs == [9, 11])
     }
 }

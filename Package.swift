@@ -56,7 +56,7 @@ let package = Package(
         ),
         .target(
             name: "VictualHealth",
-            dependencies: ["VictualCore"]
+            dependencies: ["VictualCore", "VictualAPI"]
         ),
         // Shared fakes for the test targets. Not a product: nothing outside this
         // package can import it.
