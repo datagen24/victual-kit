@@ -59,7 +59,7 @@ the entitlement, so CI is unaffected. See
 
 ### HealthKit device spike (debug builds)
 
-Plan 03 Phase 0. A Debug build has **Settings > HealthKit spike** (top right); a Release
+Plan 03 Phase 0. A Debug build has **Settings > Debug > HealthKit spike**; a Release
 build does not contain it. It needs a physical iPhone on iOS 26 or later with medications
 entered in the Health app (the simulator has none), and a signing team in
 `Apps/Local.xcconfig`. It makes no network request and writes nothing to Health.
@@ -68,7 +68,7 @@ entered in the Health app (the simulator has none), and a signing team in
    **VictualPhone**, destination your phone, Run. Automatic signing adds the HealthKit and
    Background Delivery capabilities to the App ID on the first build.
 2. Connect to any Victual instance (the spike is behind the connection screen). Open
-   Settings, then **HealthKit spike**.
+   Settings, then Debug, then **HealthKit spike**.
 3. **1. Choose medications** and tick the ones to test. Include a tablet, a liquid and a
    single-use item if you have them. Each tap shows Health's sheet again, by design.
 4. **2. Start listening**, then in the Health app log doses on those medications: one taken

@@ -479,19 +479,25 @@ The spike result goes below, as the text its report produces.
 
 ### Phase 2 code (phone UI)
 
-Built against a fake, because the real transport cannot be written yet:
+Event and mapping calls are built against a fake, because there is nothing real to call yet:
 
-- `VictualClient` keeps its authenticated transport (`channel`) `internal` and its generated
-  client has no `/consumption` routes, so neither `ConsumptionEventSubmitter` nor the new
-  `ConsumptionMappingService` can be implemented outside `VictualCore`. The missing piece is
-  a public way to send a request through the client's authentication and middleware chain
-  (a public `send(_:body:operationID:)`, or `Channel` made public). The same gap blocks the
-  mapping editor's read of `quantity_unit_conversions_resolved?query[]=…`: `listObjects` is
-  internal and takes no query.
-- The phone therefore ships `UnsupportedMedicationBackend`, which answers `notFound`
-  everywhere, so a release build reports an older server and shows no Medications entry (the
-  truth for 0.3.x). Debug builds have a "Demo medication server" switch in Settings that
-  runs the screens against `DemoMedicationBackend`, an in-memory server.
+- The `/consumption` routes are not in the generated client until victual#700, and
+  `VictualClient` keeps its authenticated transport (`channel`) `internal`, so neither
+  `ConsumptionEventSubmitter` nor the new `ConsumptionMappingService` can be implemented
+  outside `VictualCore`. Once the routes are in `victual.openapi.json` the generated client
+  covers them and nothing more is needed; before that, a public
+  `send(_:body:operationID:)` on `VictualClient` would be the missing piece.
+- The mapping editor's *reads* did not need that: products, `quantity_unit_conversions_resolved`
+  (now with `query[]` support in `listObjects`) and `/stock/products/{id}/locations` exist
+  today, so `VictualMappingCatalog` is real and works against 0.3.x.
+- **Consumption recipes cannot be listed.** The plan assumed the mapping screen could offer
+  recipes. ADR-0040 keeps a consumption recipe out of `recipes` (it is a separate, owned
+  list with its own routes, #698), and `/objects/recipes` returns *food* recipes, which are
+  not valid targets. The catalog therefore offers no recipes until those routes exist.
+- The phone ships `UnsupportedMedicationBackend`, which answers `notFound` everywhere, so a
+  release build reports an older server and shows no Medications entry (the truth for 0.3.x).
+  Debug builds have a "Demo medication server" switch in Settings: real catalog, in-memory
+  events and mappings (`DemoMedicationBackend`).
 - The plan said `ConsumptionEventSubmitter` was enough. It was not: the mapping editor and
   the wizard need mapping routes (`PUT/GET/DELETE /consumption/mappings/…`), so
   `ConsumptionMappingService` and `MappingCatalog` were added beside it. The device holds no
@@ -502,3 +508,7 @@ Built against a fake, because the real transport cannot be written yet:
   field table says, so the editor asks for an organizer for `explicit` as well as `fixed`.
 - `VictualClient.currentUserID()` (`GET /user`) keys the queue and anchor by person, since
   an API key rotates.
+- With nothing mapped, `HealthKitDoseSource` reads the last 30 days so the screen can say
+  "needs mapping"; the predicate's start date moves between calls while the anchor key stays
+  fixed. Whether HealthKit tolerates that under a reused anchor is unverified, and nothing is
+  sent in that state, so the spike should note it if it misbehaves.

@@ -116,7 +116,8 @@ extension VictualClient {
     /// toolchain.
     func listObjects<Row: Decodable & Sendable>(
         _ entity: String,
-        as rowType: Row.Type
+        as rowType: Row.Type,
+        query: [String] = []
     ) async throws -> [Row] {
         let request = HTTPRequest(
             method: .get,
@@ -124,7 +125,7 @@ extension VictualClient {
             authority: nil,
             // Server-relative, the way the generated client builds it: the
             // transport concatenates this onto the base URL's own path.
-            path: "/objects/\(entity)",
+            path: "/objects/\(entity)" + Self.queryString(query),
             headerFields: [.accept: "application/json"]
         )
 
@@ -162,6 +163,20 @@ extension VictualClient {
         } catch {
             throw VictualError.decodingFailed(underlying: error)
         }
+    }
+
+    /// `?query[]=a&query[]=b`, each condition percent-encoded.
+    ///
+    /// `[]`, `=` and `&` are encoded because they would otherwise be read as the
+    /// query's own structure; the server decodes them back.
+    static func queryString(_ conditions: [String]) -> String {
+        guard !conditions.isEmpty else { return "" }
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "[]=&+#")
+        let parts = conditions.map { condition in
+            "query%5B%5D=" + (condition.addingPercentEncoding(withAllowedCharacters: allowed) ?? condition)
+        }
+        return "?" + parts.joined(separator: "&")
     }
 
     /// The server's explanation for a non-200, when it sent one.

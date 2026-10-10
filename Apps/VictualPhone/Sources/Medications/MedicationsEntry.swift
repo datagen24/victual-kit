@@ -30,6 +30,11 @@ struct MedicationsSettingsSection: View {
                 Label("Medication sync needs a newer Victual server.", systemImage: "pills")
                     .foregroundStyle(.secondary)
             }
+        } else if case .unavailable(.missingFeatures(let missing)) = medications.sync?.availability {
+            Section {
+                Label("This server lacks what medication sync needs: \(missing.joined(separator: ", ")).", systemImage: "pills")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

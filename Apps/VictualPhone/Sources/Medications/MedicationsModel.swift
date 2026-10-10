@@ -59,8 +59,11 @@ final class MedicationsModel {
         let catalog: any MappingCatalog
         #if DEBUG
         if useDemoBackend {
+            // The routes for events and mappings do not exist yet, so those are in
+            // memory. What the editor reads (products, units, organizers) does
+            // exist, so it reads the real instance and the demo maps real products.
             let demo = DemoMedicationBackend()
-            (submitter, mappingService, catalog) = (demo, demo, demo)
+            (submitter, mappingService, catalog) = (demo, demo, VictualMappingCatalog(client: client))
         } else {
             let none = UnsupportedMedicationBackend()
             (submitter, mappingService, catalog) = (none, none, none)
@@ -89,14 +92,6 @@ final class MedicationsModel {
     func foreground(canConsume: Bool) async {
         guard canConsume, let sync, sync.availability == .available else { return }
         await sync.sync()
-    }
-
-    /// Forgets the stores, for a disconnect or a different server.
-    func reset() {
-        sync = nil
-        setup = nil
-        webURL = nil
-        prepareError = nil
     }
 
     private static var directory: URL {

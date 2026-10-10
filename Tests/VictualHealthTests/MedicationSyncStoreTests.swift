@@ -165,3 +165,20 @@ struct MedicationSyncStoreTests {
         #expect(submitter.calls.count == 1)
     }
 }
+
+@MainActor
+@Suite("Medication sync reentrancy")
+struct MedicationSyncReentrancyTests {
+    @Test func aSecondSyncDuringTheFirstDoesNothing() async {
+        let submitter = FakeSubmitter()
+        let source = ScriptedSource([Fixtures.batch([Fixtures.dose("D1")])])
+        let store = MedicationSyncStore(
+            source: source, submitter: submitter, storage: MemoryStateStore(), server: "s", account: "me",
+            mappings: MappingSet([Fixtures.mapping()]), now: { Fixtures.t0 }, zone: { Fixtures.zone })
+        async let first: Void = store.sync()
+        async let second: Void = store.sync()
+        _ = await (first, second)
+        #expect(submitter.puts.count == 1)
+        #expect(source.anchorsSeen.count == 1)
+    }
+}
