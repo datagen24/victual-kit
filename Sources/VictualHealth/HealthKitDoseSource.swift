@@ -1,4 +1,6 @@
-#if canImport(HealthKit)
+#if canImport(HealthKit) && compiler(>=6.2)
+// `compiler(>=6.2)` stands in for the iOS 26 SDK: HealthKit exists in older SDKs, but the
+// medication types do not, and CI's Xcode 16.4 (Swift 6.1) must still build this target.
 import Foundation
 import HealthKit
 
