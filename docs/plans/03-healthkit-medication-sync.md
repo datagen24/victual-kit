@@ -464,6 +464,51 @@ a product from a medication. App Intents, which stay with the Siri concept.
 
 ## Executed
 
-Not started. Written 2026-10-09 from the sources named above. The Apple reference pages
-were read; no HealthKit code has been compiled or run, and nothing has been exercised on
-a device.
+Written 2026-10-09 from the sources named above; extended 2026-10-10 with the code below.
+The Apple reference pages were read and the code compiles against the iOS 27 SDK, but
+**nothing has been run on a device**, so every HealthKit behaviour in the table of
+[What Apple provides](#what-apple-provides) is still the documented one, not the observed one.
+
+### Phase 0 code (device spike)
+
+`HealthKitDoseSource`, `MedicationRef` and `HealthKitSpike` in `VictualHealth`, and a
+debug-only screen in the phone app. How to run it is in `Apps/VictualPhone/README.md`.
+The spike result goes below, as the text its report produces.
+
+> *Spike results: not yet run.*
+
+### Phase 2 code (phone UI)
+
+Event and mapping calls are built against a fake, because there is nothing real to call yet:
+
+- The `/consumption` routes are not in the generated client until victual#700, and
+  `VictualClient` keeps its authenticated transport (`channel`) `internal`, so neither
+  `ConsumptionEventSubmitter` nor the new `ConsumptionMappingService` can be implemented
+  outside `VictualCore`. Once the routes are in `victual.openapi.json` the generated client
+  covers them and nothing more is needed; before that, a public
+  `send(_:body:operationID:)` on `VictualClient` would be the missing piece.
+- The mapping editor's *reads* did not need that: products, `quantity_unit_conversions_resolved`
+  (now with `query[]` support in `listObjects`) and `/stock/products/{id}/locations` exist
+  today, so `VictualMappingCatalog` is real and works against 0.3.x.
+- **Consumption recipes cannot be listed.** The plan assumed the mapping screen could offer
+  recipes. ADR-0040 keeps a consumption recipe out of `recipes` (it is a separate, owned
+  list with its own routes, #698), and `/objects/recipes` returns *food* recipes, which are
+  not valid targets. The catalog therefore offers no recipes until those routes exist.
+- The phone ships `UnsupportedMedicationBackend`, which answers `notFound` everywhere, so a
+  release build reports an older server and shows no Medications entry (the truth for 0.3.x).
+  Debug builds have a "Demo medication server" switch in Settings: real catalog, in-memory
+  events and mappings (`DemoMedicationBackend`).
+- The plan said `ConsumptionEventSubmitter` was enough. It was not: the mapping editor and
+  the wizard need mapping routes (`PUT/GET/DELETE /consumption/mappings/…`), so
+  `ConsumptionMappingService` and `MappingCatalog` were added beside it. The device holds no
+  copy of a mapping beyond what the sync needs; the server's is authoritative.
+- ADR-0041's schema carries `quantity_factor`, not a unit id, so the editor's "unit" choice
+  is a stored factor, and re-opening a mapping asks for the unit again.
+- `explicit` location mode sends the mapping's organizer with each event, as this plan's
+  field table says, so the editor asks for an organizer for `explicit` as well as `fixed`.
+- `VictualClient.currentUserID()` (`GET /user`) keys the queue and anchor by person, since
+  an API key rotates.
+- With nothing mapped, `HealthKitDoseSource` reads the last 30 days so the screen can say
+  "needs mapping"; the predicate's start date moves between calls while the anchor key stays
+  fixed. Whether HealthKit tolerates that under a reused anchor is unverified, and nothing is
+  sent in that state, so the spike should note it if it misbehaves.

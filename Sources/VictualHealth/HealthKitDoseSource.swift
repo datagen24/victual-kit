@@ -1,4 +1,6 @@
-#if canImport(HealthKit)
+#if canImport(HealthKit) && compiler(>=6.2)
+// `compiler(>=6.2)` stands in for the iOS 26 SDK: HealthKit exists in older SDKs, but the
+// medication types do not, and CI's Xcode 16.4 (Swift 6.1) must still build this target.
 import Foundation
 import HealthKit
 
@@ -9,28 +11,13 @@ import HealthKit
 // also builds for macOS 14+ and an `iOS 26`-only attribute would not satisfy the
 // compiler there.
 
-/// A medication the person has authorized, for the screens that name it.
-///
-/// ``displayName`` exists so the mapping and review screens can show the person
-/// their own medication. It is held in memory only: never log it, persist it, or
-/// send it to the server.
-@available(iOS 26, macOS 26, macCatalyst 26, watchOS 26, visionOS 26, *)
-public struct HealthMedication: Sendable, Equatable, Identifiable {
-    /// The opaque `medication_ref`.
-    public var ref: String
-    public var id: String { ref }
-    public var displayName: String
-    public var isArchived: Bool
-    public var hasSchedule: Bool
-}
-
 /// Reads medication dose events from Health.
 ///
 /// Read-only: nothing here writes to Health or asks to. Authorization is a
 /// separate explicit step, ``requestMedicationAuthorization()``, because Health
 /// shows its sheet every time it is asked and it must only follow a person's tap.
 @available(iOS 26, macOS 26, macCatalyst 26, watchOS 26, visionOS 26, *)
-public struct HealthKitDoseSource: DoseEventSource {
+public struct HealthKitDoseSource: DoseEventSource, HealthMedicationSource {
     private let store: HKHealthStore
     private let now: @Sendable () -> Date
 

@@ -146,7 +146,7 @@ public struct SpikeEnvironment: Sendable, Equatable {
         let configuration = "Release"
         #endif
         return SpikeEnvironment(
-            deviceModel: String(cString: machine),
+            deviceModel: String(decoding: machine.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self),
             osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             buildConfiguration: configuration)
     }

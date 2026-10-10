@@ -62,9 +62,10 @@ CI does the same thing on every pull request, in the `app` job.
 
 ### Tests
 
-The scheme's Test action (**Cmd-U**) runs the package's four test targets
-(`VictualAPITests`, `VictualCoreTests`, `VictualUITests`, `VictualStockTests`), so the
-whole suite runs from the IDE. `swift test` at the repository root runs the same tests.
+The scheme's Test action (**Cmd-U**) runs the package's five test targets
+(`VictualAPITests`, `VictualCoreTests`, `VictualUITests`, `VictualStockTests`,
+`VictualHealthTests`), so the whole suite runs from the IDE. The Mac application does not
+link `VictualHealth` (a Mac cannot read the person's Health data); only its tests run here. `swift test` at the repository root runs the same tests.
 The app has no test target of its own: its logic lives in the package. When a new package
 test target is added, list it under the scheme's `test:` in `project.yml`.
 

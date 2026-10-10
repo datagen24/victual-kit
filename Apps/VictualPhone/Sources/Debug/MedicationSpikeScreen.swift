@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG && compiler(>=6.2)
 import SwiftUI
 import UIKit
 import VictualHealth
@@ -133,5 +133,12 @@ struct MedicationSpikeScreen: View {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("HealthKitSpike", isDirectory: true)
     }
+}
+#elseif DEBUG
+import SwiftUI
+
+/// Built with an SDK older than iOS 26, which has no medication types.
+struct MedicationSpikeLink: View {
+    var body: some View { EmptyView() }
 }
 #endif
