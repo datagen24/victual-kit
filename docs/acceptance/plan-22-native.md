@@ -74,12 +74,16 @@ medication names, no nicknames, and times to the minute only. Fill the fields be
 (not run)
 ```
 
-Questions the report answers (plan 03, Phase 0): which fields are non-nil; `doseQuantity`
-and the unit string for a tablet, a liquid and a single-use item; whether an edit emits a
-deletion and a new uuid or changes in place; whether undo emits a `notLogged` sample, a
-deletion, or both; delivery latency for a dose logged now; whether the `description` or the
-hashed `medication_ref` is stable across launches; what revoking one medication emits; and
-whether background delivery is accepted.
+The report answers these Phase 0 questions of plan 03:
+
+- Which fields are non-nil.
+- What `doseQuantity` and the unit string are for a tablet, a liquid and a single-use item.
+- Whether an edit emits a deletion and a new uuid, or changes in place.
+- Whether undo emits a `notLogged` sample, a deletion, or both.
+- The delivery latency for a dose logged now.
+- Whether the `description` or the hashed `medication_ref` is stable across launches.
+- What revoking one medication emits.
+- Whether background delivery is accepted.
 
 ## Differences found between the records and the schema
 
