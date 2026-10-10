@@ -145,7 +145,12 @@ public final class RefillStore {
         do {
             return try await source.fills(recipeID: recipeID, asOf: today)
         } catch {
-            await handle(VictualError.mapping(error))
+            switch VictualError.mapping(error) {
+            // One prescription the caller cannot read is not a lost caller: the list
+            // refresh already drops it, and nothing else is touched here.
+            case .notFound: break
+            case let failure: await handle(failure)
+            }
             return []
         }
     }

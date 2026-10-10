@@ -30,6 +30,11 @@ struct RootView: View {
         }
         .victualSession(session)
         .onChange(of: session.connectionGeneration) { _, _ in syncWorkspace() }
+        // The key was removed: cancel the refill notifications and erase what was kept.
+        .onChange(of: session.signOutCount) { _, _ in
+            let signedOut = workspace
+            Task { await signedOut?.refills.revoke() }
+        }
         .onAppear(perform: syncWorkspace)
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -44,8 +49,8 @@ struct RootView: View {
         let previous = workspace
         previous?.stop()
         guard let client = session.client else {
-            // Disconnected or signed out: nothing private stays on the phone.
-            Task { await previous?.refills.revoke() }
+            // A disconnect keeps the key, and with it what this phone holds for the
+            // person; only a sign-out (below) removes it.
             workspace = nil
             return
         }

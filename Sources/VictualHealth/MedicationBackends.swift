@@ -1,29 +1,6 @@
 import Foundation
 import VictualCore
 
-/// A server that has no medication routes, for tests and previews.
-///
-/// Every call answers `notFound`, so ``MedicationSyncStore/checkAvailability()``
-/// reports an older server and the app offers no Medications screen. The phone
-/// itself uses ``VictualConsumptionService``, which answers the same on a server
-/// without the routes.
-public struct UnsupportedMedicationBackend: ConsumptionEventSubmitter, ConsumptionMappingService, MappingCatalog {
-    public init() {}
-
-    public func put(_ submission: ConsumptionEventSubmission, sourceEventID: String) async throws -> ConsumptionEvent { throw VictualError.notFound }
-    public func delete(sourceEventID: String, reason: DeletionReason?) async throws -> ConsumptionEvent { throw VictualError.notFound }
-    public func resolve(sourceEventID: String, action: ResolutionAction) async throws -> ConsumptionEvent { throw VictualError.notFound }
-    public func resolve(sourceEventIDs: [String], action: ResolutionAction) async throws -> [BulkResolveOutcome] { throw VictualError.notFound }
-    public func capabilities() async throws -> ConsumptionCapabilities { throw VictualError.notFound }
-    public func mappings() async throws -> [ConsumptionMapping] { throw VictualError.notFound }
-    public func put(_ input: ConsumptionMappingInput, medicationRef: String) async throws -> ConsumptionMapping { throw VictualError.notFound }
-    public func delete(medicationRef: String) async throws { throw VictualError.notFound }
-    public func products() async throws -> [CatalogItem] { throw VictualError.notFound }
-    public func recipes() async throws -> [CatalogItem] { throw VictualError.notFound }
-    public func units(forProduct id: Int) async throws -> [CatalogUnit] { throw VictualError.notFound }
-    public func locations(forProduct id: Int?) async throws -> [CatalogLocation] { throw VictualError.notFound }
-}
-
 /// A server that lives in memory, for previews, tests and the debug demo.
 ///
 /// It stores nothing on disk and talks to nothing. Its behaviour is the small part

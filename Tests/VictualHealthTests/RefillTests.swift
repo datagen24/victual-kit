@@ -43,7 +43,11 @@ final class FakeRefillSource: RefillSource, @unchecked Sendable {
         if let ackError { throw ackError }
     }
 
-    func fills(recipeID: Int, asOf: CalendarDay) async throws -> [RefillFillRecord] { [] }
+    var fillsError: VictualError?
+    func fills(recipeID: Int, asOf: CalendarDay) async throws -> [RefillFillRecord] {
+        if let fillsError { throw fillsError }
+        return []
+    }
 }
 
 final class FakeNotificationCenter: RefillNotificationCenter, @unchecked Sendable {
@@ -363,6 +367,31 @@ struct RefillStoreTests {
         await s.refresh()
         #expect(center.removed.contains("13:due:2026-03-18"))
         #expect(s.items.map(\.recipeID) == [12])
+    }
+
+    @Test func anUnreadablePrescriptionDetailDoesNotRevokeTheRest() async {
+        let source = FakeRefillSource()
+        source.noticesFor = { _ in [notice(12, .due, "2026-03-18")] }
+        source.fillsError = .notFound
+        let center = FakeNotificationCenter()
+        let state = InMemoryRefillStateStore()
+        let s = store(source, center, state: state)
+        await s.refresh()
+        #expect(await s.fills(recipeID: 99).isEmpty)
+        #expect(center.removedAll == 0)
+        #expect(!(await state.isEmpty))
+        #expect(!s.accessLost)
+        #expect(s.state.error == nil)
+    }
+
+    @Test func aRefusedCallerOnTheDetailCallIsStillRevoked() async {
+        let source = FakeRefillSource()
+        source.fillsError = .unauthorized
+        let center = FakeNotificationCenter()
+        let s = store(source, center)
+        await s.refresh()
+        _ = await s.fills(recipeID: 12)
+        #expect(center.removedAll == 1)
     }
 
     @Test func signingOutErasesState() async {

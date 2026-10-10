@@ -129,7 +129,8 @@ struct MedicationSyncStoreTests {
         #expect(store.reviewRows.isEmpty)
     }
 
-    @Test(arguments: [ConsumptionReviewReason.insufficientStock, .ambiguousLocation, .recipeUnavailable, .quantityMissing])
+    // Every reason except the two that have a row of their own.
+    @Test(arguments: ConsumptionReviewReason.allCases.filter { $0 != .sourceDeleted && $0 != .unitUnconfirmed })
     func otherReasonsAreShownAsTheServerSentThem(reason: ConsumptionReviewReason) async {
         let submitter = FakeSubmitter()
         submitter.respond(to: "D1", with: ConsumptionEvent(sourceEventID: "D1", state: .needsReview, reason: reason))
