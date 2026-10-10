@@ -39,7 +39,15 @@ final class MedicationsModel {
 
     /// Builds the stores for `client`. Safe to call again after a reconnect.
     func prepare(client: VictualClient) async {
+        #if compiler(>=6.2)
         guard #available(iOS 26, *), HealthKitDoseSource.isHealthDataAvailable else { return }
+        await prepareOniOS26(client: client)
+        #endif
+    }
+
+    #if compiler(>=6.2)
+    @available(iOS 26, *)
+    private func prepareOniOS26(client: VictualClient) async {
         let userID: Int
         do {
             userID = try await client.currentUserID()
@@ -84,6 +92,7 @@ final class MedicationsModel {
         await sync.checkAvailability()
         if sync.availability == .available { await setup.load() }
     }
+    #endif
 
     /// Sync on launch and foreground, when the key may record consumption.
     ///
