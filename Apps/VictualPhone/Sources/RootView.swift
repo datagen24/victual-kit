@@ -41,10 +41,17 @@ struct RootView: View {
     }
 
     private func syncWorkspace() {
-        workspace?.stop()
+        let previous = workspace
+        previous?.stop()
         guard let client = session.client else {
+            // Disconnected or signed out: nothing private stays on the phone.
+            Task { await previous?.refills.revoke() }
             workspace = nil
             return
+        }
+        // A different server is a different person's data.
+        if let previous, previous.client.server.instanceURL != client.server.instanceURL {
+            Task { await previous.refills.revoke() }
         }
         workspace = PhoneWorkspace(client: client)
     }
@@ -140,6 +147,7 @@ private struct SettingsScreen: View {
                     Text("The instance and key, and both ways out: disconnect, which keeps the key, and forget, which removes it.")
                 }
                 MedicationsSettingsSection(medications: workspace.medications, capabilities: workspace.capabilities)
+                RefillsSettingsSection(refills: workspace.refills)
                 #if DEBUG
                 DebugSettingsSection(workspace: workspace)
                 #endif

@@ -29,6 +29,8 @@ final class PhoneWorkspace {
     let scanner: ScanStore
     /// Medication sync, when this phone and server can do it. See ``MedicationsModel``.
     let medications = MedicationsModel()
+    /// Refill dates and notices. See ``RefillsModel``.
+    let refills = RefillsModel()
 
     /// The booking form currently shown, if any.
     var presentedBooking: BookingPresentation?
@@ -47,7 +49,8 @@ final class PhoneWorkspace {
         async let capabilitiesLoad: Void = capabilities.load()
         async let stockLoad: Void = stock.refresh()
         async let medicationsPrepare: Void = medications.prepare(client: client)
-        _ = await (capabilitiesLoad, stockLoad, medicationsPrepare)
+        async let refillsPrepare: Void = refills.prepare(client: client)
+        _ = await (capabilitiesLoad, stockLoad, medicationsPrepare, refillsPrepare)
         resume()
     }
 
@@ -59,6 +62,7 @@ final class PhoneWorkspace {
         // Launch and return to the foreground are the only automatic medication
         // syncs: background delivery waits on the device spike.
         Task { await medications.foreground(canConsume: capabilities.canConsume) }
+        Task { await refills.foreground() }
     }
 
     /// Stops polling. A phone in a pocket has no reason to ask the server
