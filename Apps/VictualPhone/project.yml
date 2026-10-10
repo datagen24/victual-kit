@@ -112,6 +112,7 @@ schemes:
         - package: VictualKit/VictualCoreTests
         - package: VictualKit/VictualUITests
         - package: VictualKit/VictualStockTests
+        - package: VictualKit/VictualHealthTests
     run:
       config: Debug
     archive:

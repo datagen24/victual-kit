@@ -84,11 +84,10 @@ entered in the Health app (the simulator has none), and a signing team in
 
 ### Tests
 
-The scheme's Test action (**Cmd-U**) runs the package's four test targets, as on the Mac;
-pick a simulator or device destination. `swift test` at the repository root runs the same
-tests. The app has no test target of its own. When the `VictualHealth` package target
-lands, add its test target under the scheme's `test:` in `project.yml` and its product to
-the app's `dependencies`.
+The scheme's Test action (**Cmd-U**) runs the package's five test targets, as on the Mac
+(`VictualHealthTests` included); pick a simulator or device destination. `swift test` at the
+repository root runs the same tests. The app has no test target of its own. A new package
+test target is listed under the scheme's `test:` in `project.yml`.
 
 A household instance on plain `http` on the LAN is allowed (`NSAllowsLocalNetworking`);
 anything reached over the internet still needs TLS.
