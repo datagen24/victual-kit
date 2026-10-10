@@ -68,7 +68,7 @@ Rows 16 and 17 need a second user with an API key of their own. The API has no r
 - Rows 16 and 17 (second user).
 - Anything a device produces: real payload fields, identifier behavior on edit, late delivery, revocation.
 - The refill routes. The instance has no refill data, and the fixtures do not cover them.
-- The route list ignores the `remaining` and ordering behavior for bulk resolution beyond what fixtures 09f and 09g check.
+- Bulk-resolution behavior beyond what fixtures 09f and 09g check.
 
 ## Reproducing
 
