@@ -122,6 +122,7 @@ public final class MedicationSyncStore {
     private let zone: @Sendable () -> TimeZone
     private var engine: DoseSyncEngine
     private var mappings: MappingSet
+    private var isSyncing = false
 
     /// - Parameters:
     ///   - server: The instance's base URL as text. Keys the anchor.
@@ -197,6 +198,11 @@ public final class MedicationSyncStore {
 
     /// Pulls, then sends.
     public func sync() async {
+        // One sync at a time: a pull-to-refresh during a foreground sync would
+        // otherwise interleave two drains over the same queue.
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
         if availability == .unknown { await checkAvailability() }
         guard availability == .available else { return }
         state = .syncing

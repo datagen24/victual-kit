@@ -65,7 +65,7 @@ private struct MainTabs: View {
                 StockScreen(workspace: workspace)
             }
             Tab("Settings", systemImage: "gear") {
-                SettingsScreen(session: session)
+                SettingsScreen(session: session, workspace: workspace)
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -120,20 +120,31 @@ private struct MainTabs: View {
     }
 }
 
-/// The instance, the key, and both ways out: disconnect, which keeps the key,
-/// and forget, which removes it.
+/// The instance and key, medication sync when the server takes it, and in debug
+/// builds the tools for trying it.
 private struct SettingsScreen: View {
     let session: VictualSession
+    let workspace: PhoneWorkspace
 
     var body: some View {
         NavigationStack {
-            VictualConnectionView(session: session)
-                .navigationTitle("Settings")
-                #if DEBUG
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) { MedicationSpikeLink() }
+            List {
+                Section {
+                    NavigationLink {
+                        VictualConnectionView(session: session)
+                            .navigationTitle("Connection")
+                    } label: {
+                        LabeledContent("Connection", value: session.serverText)
+                    }
+                } footer: {
+                    Text("The instance and key, and both ways out: disconnect, which keeps the key, and forget, which removes it.")
                 }
+                MedicationsSettingsSection(medications: workspace.medications, capabilities: workspace.capabilities)
+                #if DEBUG
+                DebugSettingsSection(workspace: workspace)
                 #endif
+            }
+            .navigationTitle("Settings")
         }
     }
 }
