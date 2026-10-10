@@ -20,6 +20,8 @@ let package = Package(
         .library(name: "VictualUI", targets: ["VictualUI"]),
         // Observable stores over the client: what a connection is used for.
         .library(name: "VictualStock", targets: ["VictualStock"]),
+        // Medication dose sync: the model and sync engine, with no HealthKit import.
+        .library(name: "VictualHealth", targets: ["VictualHealth"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-openapi-generator.git", from: "1.13.0"),
@@ -52,6 +54,10 @@ let package = Package(
             name: "VictualStock",
             dependencies: ["VictualCore"]
         ),
+        .target(
+            name: "VictualHealth",
+            dependencies: ["VictualCore"]
+        ),
         // Shared fakes for the test targets. Not a product: nothing outside this
         // package can import it.
         .target(
@@ -77,6 +83,11 @@ let package = Package(
         .testTarget(
             name: "VictualStockTests",
             dependencies: ["VictualStock", "VictualTestSupport"]
+        ),
+        .testTarget(
+            name: "VictualHealthTests",
+            dependencies: ["VictualHealth", "VictualTestSupport"],
+            resources: [.copy("Fixtures")]
         ),
     ]
 )
