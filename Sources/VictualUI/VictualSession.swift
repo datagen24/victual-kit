@@ -70,6 +70,11 @@ public final class VictualSession {
     /// actually walks.
     public private(set) var connectionGeneration: Int = 0
 
+    /// How many times ``signOut()`` has run. A disconnect keeps the key and the
+    /// person's local data; a sign-out removes the key, so front ends clear what
+    /// they hold for this person when this changes.
+    public private(set) var signOutCount: Int = 0
+
     /// Set when the connected server is newer than this app was built for.
     ///
     /// Apart from ``state`` because it is not a failure: the session works, and
@@ -205,6 +210,7 @@ public final class VictualSession {
         }
 
         defaults.removeObject(forKey: Self.lastServerDefaultsKey)
+        signOutCount += 1
         setClient(nil)
         apiKeyText = ""
         state = .disconnected

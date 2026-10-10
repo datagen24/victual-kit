@@ -286,6 +286,7 @@ struct VictualSessionCredentialTests {
 
         await session.signOut()
 
+        #expect(session.signOutCount == 1)
         #expect(try await store.apiKey(for: server) == nil)
         #expect(session.lastUsedServer == nil)
         #expect(session.apiKeyText.isEmpty)

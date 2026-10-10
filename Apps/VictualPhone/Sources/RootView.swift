@@ -30,6 +30,11 @@ struct RootView: View {
         }
         .victualSession(session)
         .onChange(of: session.connectionGeneration) { _, _ in syncWorkspace() }
+        // The key was removed: cancel the refill notifications and erase what was kept.
+        .onChange(of: session.signOutCount) { _, _ in
+            let signedOut = workspace
+            Task { await signedOut?.refills.revoke() }
+        }
         .onAppear(perform: syncWorkspace)
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -41,10 +46,17 @@ struct RootView: View {
     }
 
     private func syncWorkspace() {
-        workspace?.stop()
+        let previous = workspace
+        previous?.stop()
         guard let client = session.client else {
+            // A disconnect keeps the key, and with it what this phone holds for the
+            // person; only a sign-out (below) removes it.
             workspace = nil
             return
+        }
+        // A different server is a different person's data.
+        if let previous, previous.client.server.instanceURL != client.server.instanceURL {
+            Task { await previous.refills.revoke() }
         }
         workspace = PhoneWorkspace(client: client)
     }
@@ -140,6 +152,7 @@ private struct SettingsScreen: View {
                     Text("The instance and key, and both ways out: disconnect, which keeps the key, and forget, which removes it.")
                 }
                 MedicationsSettingsSection(medications: workspace.medications, capabilities: workspace.capabilities)
+                RefillsSettingsSection(refills: workspace.refills)
                 #if DEBUG
                 DebugSettingsSection(workspace: workspace)
                 #endif
