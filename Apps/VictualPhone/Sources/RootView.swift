@@ -171,14 +171,16 @@ struct UndoBar: View {
     let onUndo: () async -> Void
 
     var body: some View {
-        if bookings.canUndoLast, let action = bookings.lastAction {
+        if bookings.hasConfirmableBooking, let action = bookings.lastAction {
             HStack {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 Text("\(action.title) recorded.")
                     .lineLimit(1)
                 Spacer()
-                Button("Undo") { Task { await onUndo() } }
-                    .buttonStyle(.bordered)
+                if bookings.canUndoLast {
+                    Button("Undo") { Task { await onUndo() } }
+                        .buttonStyle(.bordered)
+                }
                 Button {
                     bookings.dismissUndo()
                 } label: {

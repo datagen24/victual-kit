@@ -155,13 +155,15 @@ struct InventoryView: View {
     /// consumed the wrong thing should not be racing a timer to put it back.
     @ViewBuilder
     private var undoBar: some View {
-        if workspace.bookings.canUndoLast, let action = workspace.bookings.lastAction {
+        if workspace.bookings.hasConfirmableBooking, let action = workspace.bookings.lastAction {
             HStack {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 Text("\(action.title) recorded.")
                 Spacer()
-                Button("Undo") { Task { await workspace.undoLastBooking() } }
-                    .keyboardShortcut("z", modifiers: .command)
+                if workspace.bookings.canUndoLast {
+                    Button("Undo") { Task { await workspace.undoLastBooking() } }
+                        .keyboardShortcut("z", modifiers: .command)
+                }
                 Button("Dismiss") { workspace.bookings.dismissUndo() }
                     .buttonStyle(.borderless)
             }

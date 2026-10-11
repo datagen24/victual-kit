@@ -252,4 +252,41 @@ struct CapabilityGateTests {
         // of its own stock. The server remains the backstop.
         #expect(gate.canConsume)
     }
+
+    @Test("Undo needs STOCK_EDIT, which a consume-only key lacks")
+    func undoNeedsStockEdit() async {
+        var table = RouteTable()
+        table.capabilities = """
+            {"key_type":"default","read_only":false,
+             "permissions":["STOCK_VIEW","STOCK_CONSUME","STOCK_OPEN"]}
+            """
+        let (client, _) = testClient(table)
+        let gate = CapabilityGate(client: client)
+
+        await gate.load()
+
+        #expect(gate.canConsume)
+        #expect(!gate.canUndo)
+        #expect(gate.undoReason?.contains("STOCK_EDIT") == true)
+        #expect(gate.shortReason(.purchase) == "needs STOCK_PURCHASE")
+        #expect(gate.shortReason(.consume) == nil)
+    }
+
+    @Test("A booking by a key that cannot undo is confirmed without an undo")
+    func noUndoForAKeyThatCannotUndo() async {
+        var table = RouteTable()
+        table.capabilities = """
+            {"key_type":"default","read_only":false,
+             "permissions":["STOCK_VIEW","STOCK_CONSUME"]}
+            """
+        let (client, _) = testClient(table)
+        let gate = CapabilityGate(client: client)
+        await gate.load()
+        let controller = BookingController(client: client, gate: gate)
+
+        await controller.perform(.consume(productID: 7, amount: 1))
+
+        #expect(controller.hasConfirmableBooking)
+        #expect(!controller.canUndoLast)
+    }
 }

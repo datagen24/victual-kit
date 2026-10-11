@@ -55,9 +55,16 @@ public final class CapabilityGate {
     public var canTransfer: Bool { canWrite(.transfer) }
 
     /// Whether the key can undo a booking it made.
-    public var canUndo: Bool {
-        guard let capabilities else { return true }
-        return !capabilities.isReadOnly
+    ///
+    /// The server answers an undo with `403` unless the key holds `STOCK_EDIT`
+    /// (`POST /stock/transactions/{id}/undo`). A key that may consume but not
+    /// edit would otherwise be offered an undo for a booking that already went
+    /// through, and refused when it used it.
+    public var canUndo: Bool { canWrite(permission: VictualPermission.stockEdit) }
+
+    /// Why undo is unavailable, or `nil` when it is available.
+    public var undoReason: String? {
+        capabilities?.obstacle(to: VictualPermission.stockEdit)
     }
 
     /// Whether prices should be shown at all.
@@ -75,8 +82,19 @@ public final class CapabilityGate {
 
     /// Whether `action` is worth offering.
     public func canWrite(_ action: StockAction) -> Bool {
+        canWrite(permission: action.permission)
+    }
+
+    private func canWrite(permission: String) -> Bool {
         guard let capabilities else { return true }
-        return capabilities.canWrite(action.permission)
+        return capabilities.canWrite(permission)
+    }
+
+    /// What `action` is missing, in a few words for a menu row where there is
+    /// no room for a sentence, or `nil` when it is available.
+    public func shortReason(_ action: StockAction) -> String? {
+        guard let capabilities, !capabilities.canWrite(action.permission) else { return nil }
+        return capabilities.isReadOnly ? "read-only key" : "needs \(action.permission)"
     }
 
     /// Why `action` is unavailable, phrased for a tooltip, or `nil` when it is

@@ -94,18 +94,31 @@ public final class BookingController {
     public private(set) var error: VictualError?
 
     private let client: VictualClient
+    private let gate: CapabilityGate?
 
-    public init(client: VictualClient) {
+    /// - Parameter gate: What the key may do. Given one, a booking is not
+    ///   offered for undo when the key could not carry the undo out.
+    public init(client: VictualClient, gate: CapabilityGate? = nil) {
         self.client = client
+        self.gate = gate
+    }
+
+    /// Whether the last booking is worth confirming to the user, undoable or not.
+    ///
+    /// False for a booking the server returned without a transaction id. A key
+    /// that cannot undo still wants to hear that its booking went through.
+    public var hasConfirmableBooking: Bool {
+        lastBooking?.isUndoable == true && !isWorking
     }
 
     /// Whether there is something to offer undo for.
     ///
-    /// False for a booking the server returned without a transaction id: there
-    /// would be nothing to address the undo to, and offering a button that
-    /// cannot work is worse than offering none.
+    /// False for a booking the server returned without a transaction id, where
+    /// there would be nothing to address the undo to, and for a key without the
+    /// permission undo needs. Offering a button that cannot work is worse than
+    /// offering none.
     public var canUndoLast: Bool {
-        lastBooking?.isUndoable == true && !isWorking
+        hasConfirmableBooking && (gate?.canUndo ?? true)
     }
 
     /// Performs a booking.

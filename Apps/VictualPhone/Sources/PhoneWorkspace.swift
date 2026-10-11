@@ -38,8 +38,9 @@ final class PhoneWorkspace {
     init(client: VictualClient) {
         self.client = client
         self.stock = StockStore(client: client)
-        self.bookings = BookingController(client: client)
-        self.capabilities = CapabilityGate(client: client)
+        let capabilities = CapabilityGate(client: client)
+        self.bookings = BookingController(client: client, gate: capabilities)
+        self.capabilities = capabilities
         self.poller = ChangePoller(client: client)
         self.scanner = ScanStore(client: client)
     }

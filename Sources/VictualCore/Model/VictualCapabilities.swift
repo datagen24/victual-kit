@@ -81,5 +81,6 @@ public enum VictualPermission {
     public static let stockInventory = "STOCK_INVENTORY"
     public static let stockTransfer = "STOCK_TRANSFER"
     public static let stockPricesView = "STOCK_PRICES_VIEW"
-    public static let stockUndo = "STOCK_UNDO"
+    /// Also what undoing a booking requires: the server has no separate undo permission.
+    public static let stockEdit = "STOCK_EDIT"
 }
