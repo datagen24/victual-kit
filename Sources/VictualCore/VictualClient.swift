@@ -79,7 +79,7 @@ public struct VictualClient: Sendable {
     public init(
         server: VictualServer,
         apiKey: VictualAPIKey,
-        session: URLSession = .shared,
+        session: URLSession = VictualClient.defaultSession,
         middlewares: [any ClientMiddleware] = []
     ) {
         self.init(
@@ -91,6 +91,18 @@ public struct VictualClient: Sendable {
             middlewares: middlewares
         )
     }
+
+    /// The session a client uses unless told otherwise.
+    ///
+    /// `URLSession.shared` waits 60 seconds for a silent host, which is how long
+    /// the connection form spun against a mistyped address. Fifteen seconds
+    /// without a byte is long for a server on the same network and short enough
+    /// that a wrong address fails while the person is still looking.
+    public static let defaultSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 15
+        return URLSession(configuration: configuration)
+    }()
 
     /// The transport plus its middleware chain, as the generated client sees it.
     ///
