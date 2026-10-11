@@ -24,7 +24,7 @@ The script writes to the instance. Point it at a throwaway one.
 | Capabilities | contract version 1: events, mappings, batch, bulk_resolve, manual_consume, deletion_reasons, not_logged, default_quantity, unit_labels, replaces, refill, refill_notices |
 | Key | An ADMIN key on a throwaway development instance |
 
-## Result: 23 pass, 1 fail, 2 blocked
+## Result: 25 pass, 1 fail
 
 | Fixture | ADR row | Result | Steps |
 | --- | --- | --- | --- |
@@ -52,10 +52,12 @@ The script writes to the instance. Point it at a throwaway one.
 | 13 | 13 | pass | 5 |
 | 14 | 14 | pass | 5 |
 | 15 | 15 | pass | 6 |
-| 16 | 16 | **blocked** | 0 |
-| 17 | 17 | **blocked** | 0 |
+| 16 | 16 | pass (second run) | 4 |
+| 17 | 17 | pass (second run) | 5 |
 
-Rows 16 and 17 need a second user with an API key of their own. The API has no route that creates a key for another user, so they stay open until someone supplies one as `VICTUAL_DEV_KEY_BOB`.
+Fixtures 16 and 17 need a second user with an API key of their own. The API has no route that creates a key for another user, so a second admin user was created and its key supplied as `VICTUAL_DEV_KEY_BOB`. Both rows ran in a second run on the same instance and server build, after the first 24.
+
+Both actors are `ADMIN`. The two rows therefore show the sharing and isolation behavior for admins and do not show that a narrower role is refused.
 
 ## Findings
 
@@ -65,7 +67,7 @@ Rows 16 and 17 need a second user with an API key of their own. The API has no r
 
 ## Not covered
 
-- Rows 16 and 17 (second user).
+- A second user without `ADMIN`. Rows 16 and 17 ran with two admins.
 - Anything a device produces: real payload fields, identifier behavior on edit, late delivery, revocation.
 - The refill routes. The instance has no refill data, and the fixtures do not cover them.
 - Bulk-resolution behavior beyond what fixtures 09f and 09g check.

@@ -105,6 +105,7 @@ class World:
         self.locations: dict[str, int] = {}
         self.products: dict[str, int] = {}
         self.saved: dict[str, object] = {}
+        self.users: dict[str, tuple[int, str]] = {}
 
     def lookup(self, token: str):
         kind, _, rest = token.partition(".")
@@ -117,7 +118,8 @@ class World:
         if kind == "saved":
             return self.saved[rest]
         if kind in ("user", "username"):
-            raise Blocked("fixture refers to another user's id; multi-user fixtures are not replayed")
+            identity = self.users[rest]
+            return identity[0] if kind == "user" else identity[1]
         raise KeyError(token)
 
     def resolve_token(self, token: str):
@@ -263,6 +265,12 @@ def run_fixture(client: Client, path: Path, run: str) -> dict:
 
     start = dt.datetime.now(dt.timezone.utc)
     world = build_world(client, fixture, f"rp{run}-{number}", start)
+    for actor in sorted(users):
+        # The acting user is whoever owns that actor's key.
+        who_status, who = client.call(actor, "GET", "/api/user")
+        if who_status != 200 or not who:
+            raise RuntimeError(f"cannot identify actor '{actor}': {who_status}")
+        world.users[actor] = (who[0]["id"], who[0]["username"])
     failed = False
     for index, step in enumerate(fixture["steps"], start=1):
         actor = step.get("as", "alice")
