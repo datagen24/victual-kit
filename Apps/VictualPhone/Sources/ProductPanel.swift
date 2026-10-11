@@ -127,29 +127,42 @@ struct ProductPanel: View {
         @ViewBuilder value: () -> Value
     ) -> some View {
         let layout = stacked
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
         return layout {
+            // Stacked, the label drops to a caption so the value carries the row.
             Text(label)
+                .font(stacked ? .footnote : nil)
                 .foregroundStyle(.secondary)
                 .frame(width: stacked ? nil : 72, alignment: .leading)
             value()
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.vertical, stacked ? 4 : 0)
         .accessibilityElement(children: .combine)
     }
 
     // MARK: - What can be done
 
     private var actions: some View {
-        let layout = stacked
+        // Titles alone, on one line: an icon beside "Open one" is what truncated
+        // it. At accessibility sizes the buttons stack full width instead.
+        buttons(vertical: stacked)
+            .controlSize(.large)
+            .disabled(workspace.bookings.isWorking)
+    }
+
+    private func buttons(vertical: Bool) -> some View {
+        let layout = vertical
             ? AnyLayout(VStackLayout(spacing: 8))
             : AnyLayout(HStackLayout(spacing: 8))
         return layout {
             Button {
                 Task { await workspace.bookOne(.consume, of: detail, entry: entry) }
             } label: {
-                Label("Use one", systemImage: "minus.circle.fill")
-                    .labelStyle(PanelLabelStyle(titleOnly: stacked))
+                Text("Use one")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -158,8 +171,9 @@ struct ProductPanel: View {
             Button {
                 Task { await workspace.bookOne(.open, of: detail, entry: entry) }
             } label: {
-                Label("Open one", systemImage: "seal")
-                    .labelStyle(PanelLabelStyle(titleOnly: stacked))
+                Text("Open one")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -173,9 +187,8 @@ struct ProductPanel: View {
                     .disabled(!gate.canWrite(action))
                 }
             } label: {
-                if stacked {
-                    Label("More", systemImage: "ellipsis.circle")
-                        .frame(maxWidth: .infinity)
+                if vertical {
+                    Text("More").lineLimit(1).frame(maxWidth: .infinity)
                 } else {
                     Label("More", systemImage: "ellipsis.circle")
                         .labelStyle(.iconOnly)
@@ -185,8 +198,6 @@ struct ProductPanel: View {
             .buttonStyle(.bordered)
             .accessibilityLabel("More bookings")
         }
-        .controlSize(.large)
-        .disabled(workspace.bookings.isWorking)
     }
 
     private func menuTitle(_ action: StockAction) -> String {
@@ -224,18 +235,5 @@ struct ProductPanel: View {
             return "None in stock. Use More to add some."
         }
         return nil
-    }
-}
-
-/// A label that drops its icon when large text leaves no room for both.
-private struct PanelLabelStyle: LabelStyle {
-    let titleOnly: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        if titleOnly {
-            configuration.title
-        } else {
-            Label(configuration)
-        }
     }
 }

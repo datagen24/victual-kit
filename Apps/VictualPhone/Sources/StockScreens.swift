@@ -155,6 +155,9 @@ struct ProductScreen: View {
                 )
             }
         }
+        // The floating tab bar covers the bottom of a scroll view; leave room
+        // for the last button to scroll clear of it at every text size.
+        .contentMargins(.bottom, 72, for: .scrollContent)
         .navigationTitle(store.detail?.product.name ?? "Product")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
@@ -262,8 +265,15 @@ private struct EntryRow: View {
     let unit: QuantityUnit?
     let locationName: String?
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        // Date and place side by side wrap mid-word and truncate at large
+        // text, so they stack there.
+        let details = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 3))
+            : AnyLayout(HStackLayout(spacing: 10))
+        return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(QuantityUnit.describe(entry.amount, in: unit)).monospacedDigit()
                 if entry.isOpen {
@@ -274,7 +284,7 @@ private struct EntryRow: View {
                         .background(.tint.opacity(0.15), in: .capsule)
                 }
             }
-            HStack(spacing: 10) {
+            details {
                 if let due = entry.bestBeforeDate {
                     Label(due.formatted(.dateTime.year().month(.abbreviated).day()), systemImage: "calendar")
                         .foregroundStyle(due < Calendar.current.startOfDay(for: .now) ? .red : .secondary)
@@ -282,7 +292,7 @@ private struct EntryRow: View {
                 if let locationName {
                     Label(locationName, systemImage: "mappin.and.ellipse")
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
                 }
             }
             .font(.caption)
