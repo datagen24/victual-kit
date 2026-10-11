@@ -69,6 +69,10 @@ link `VictualHealth` (a Mac cannot read the person's Health data); only its test
 The app has no test target of its own: its logic lives in the package. When a new package
 test target is added, list it under the scheme's `test:` in `project.yml`.
 
+The hand-driven check against a live instance is
+[docs/acceptance/macos-app-manual-test.md](../../docs/acceptance/macos-app-manual-test.md).
+`Scripts/seed-dev-household.py` creates its data.
+
 ## Signing
 
 `CODE_SIGN_IDENTITY` is `-`, so it builds and runs ad-hoc signed with no developer
