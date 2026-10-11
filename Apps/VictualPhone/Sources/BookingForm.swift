@@ -22,6 +22,8 @@ struct BookingForm: View {
         self._draft = State(initialValue: presentation.draft)
     }
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     private var action: StockAction { draft.action }
     private var unit: QuantityUnit? { product?.stockQuantityUnit }
 
@@ -118,15 +120,26 @@ struct BookingForm: View {
 
     @ViewBuilder
     private var amountField: some View {
-        LabeledContent(action == .inventory ? "Counted" : "Amount") {
+        let label = action == .inventory ? "Counted" : "Amount"
+        // At accessibility sizes the label, field, unit and stepper cannot share
+        // a line: the unit broke mid-word. They stack, each on its own line.
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout())
+        return layout {
+            Text(label)
+            if !typeSize.isAccessibilitySize { Spacer() }
             HStack {
                 TextField("Amount", value: $draft.amount, format: .number.precision(.fractionLength(0...3)))
                     .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
+                    .multilineTextAlignment(typeSize.isAccessibilitySize ? .leading : .trailing)
                     .monospacedDigit()
                     .disabled(draft.stockEntryID != nil)
                 if let unit {
-                    Text(unit.name(for: draft.amount)).foregroundStyle(.secondary)
+                    Text(unit.name(for: draft.amount))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
                 Stepper("Amount", value: $draft.amount, in: draft.amountRange, step: 1)
                     .labelsHidden()
@@ -135,13 +148,21 @@ struct BookingForm: View {
         }
     }
 
+    @ViewBuilder
     private func locationPicker(_ label: String, selection: Binding<Int?>, allowsAny: Bool) -> some View {
-        Picker(label, selection: selection) {
+        let picker = Picker(label, selection: selection) {
             Text(allowsAny ? (action == .purchase ? "Product's default" : "Anywhere") : "Choose…")
                 .tag(Int?.none)
             ForEach(workspace.stock.locations) { location in
                 Text(location.path ?? location.displayName).tag(Int?.some(location.id))
             }
+        }
+        // A menu picker truncates its value ("Prod…efault") at large text; a
+        // navigation-style row wraps it.
+        if typeSize.isAccessibilitySize {
+            picker.pickerStyle(.navigationLink)
+        } else {
+            picker.pickerStyle(.menu)
         }
     }
 

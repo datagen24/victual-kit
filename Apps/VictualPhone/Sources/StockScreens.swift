@@ -228,9 +228,6 @@ struct ProductScreen: View {
                 )
             }
         }
-        // The floating tab bar covers the bottom of a scroll view; leave room
-        // for the last button to scroll clear of it at every text size.
-        .contentMargins(.bottom, 72, for: .scrollContent)
         .navigationTitle(store.detail?.product.name ?? "Product")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
