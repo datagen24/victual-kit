@@ -70,7 +70,7 @@ Merge #23 first, then #24, #25, #26, #27, #28, #29, #30, #31, each after the one
 
 ## Round 2
 
-Eight follow-up items, in PRs #32 to #38. This section records the server findings behind them.
+Eight follow-up items, in PRs #33 to #39. This section records the server findings behind them.
 
 ### Prices: what the server sends
 
