@@ -69,7 +69,7 @@ The instance was then upgraded to the `v0.4.0` release (tag commit `f73d2bec`, `
 
 The served OpenAPI document has the same paths as the spec vendored from the tag, and differs only in the five runtime `ExposedEntity_*` enums. Its sha256 is `0f171a90b4e5e73066aeac1dc0f79b6efc1cb6110fe879a6aa33411bdaeeea0a`. The vendored spec is upstream `89cea94`, sha256 `e0b8cc5de387a97e160afb8be770a7aaa90662cea467b208467562ef08905442`.
 
-Result: **28 pass, 0 fail.** Both actors are `ADMIN`, as before.
+Result: **28 pass, 0 fail.** Both actors are `ADMIN`, as before. A later run of 16 and 17 with a non-admin second user is under Run 6.
 
 | Fixture | ADR row | Result | Steps |
 | --- | --- | --- | --- |
@@ -108,7 +108,7 @@ My separate probes also agree. Twelve simultaneous identical `PUT` requests give
 
 The server also ships refill fixtures (`tests/fixtures/consumption-refill/`, last changed at `d62efe98`, 11 files). The runner builds each fixture's recipes, owners and shares, replays the steps over HTTP, and sends each read with its own `as_of`, as the fixtures do. Only the stock check is absent, because these fixtures have none.
 
-Result: **9 pass, 0 fail, 2 blocked.**
+Result: **11 pass, 0 fail.**
 
 | Fixture | What it shows | Result | Steps |
 | --- | --- | --- | --- |
@@ -120,15 +120,21 @@ Result: **9 pass, 0 fail, 2 blocked.**
 | 06 | Cancelling an order restores the status the fills and rules say | pass | 4 |
 | 07 | Voiding and re-recording an identical fill keeps the notice key; a changed date makes a ne | pass | 9 |
 | 08 | A newer fill ends an explicit date for good; voiding the newer fill does not bring it back | pass | 4 |
-| 09 | Notices: approaching, then due; per-user acknowledgement; an open order raises none | blocked | 0 |
+| 09 | Notices: approaching, then due; per-user acknowledgement; an open order raises none | pass | 14 |
 | 10 | The client's calendar date decides the status; without one the server says it used the UTC | pass | 7 |
-| 11 | Refill data follows the recipe's shares; a hidden recipe is absent, not forbidden | blocked | 0 |
+| 11 | Refill data follows the recipe's shares; a hidden recipe is absent, not forbidden | pass | 13 |
 
-Fixtures 09 and 11 name a third user (`carol`) and no API key for that user was available. They stay open. Fixture 11, access that follows the recipe, is also the one that depends on the fixture's non-admin users, since the fixture README gives every user but `alice` only `STOCK_VIEW`. Run with admin keys it could not show a refusal, so it needs non-admin users with their own keys.
+Fixtures 09 and 11 first ran blocked, for want of a third user. They then ran with three users who hold different roles: `alice` is an `ADMIN` (she owns the setup and holds more than the fixtures need), `bob` has the built-in `CHILD` role (14 permissions, including `STOCK_VIEW`, no `STOCK_EDIT`) and `carol` has the built-in `ADULT` role. Fixture 11 is about who can read and who can edit, so it needed users who are not admins, and it passes with them.
 
 The refill list and notices cover every recipe a user owns on the shared instance. The runner keeps only the recipes of the fixture being run, so earlier fixtures and earlier runs do not change the counts.
 
 These rows show the server's answers, including provenance, the approaching and due boundaries, corrected fills with the same and a changed notice key, and the client's `as_of` date. They say nothing about a client reading the notices, scheduling a local notification, or opening the right screen.
+
+## Run 6: non-admin users
+
+The `ADULT` role was assigned to the `Adult-Test` user and `CHILD` to `Child-Test`, using the admin key, and each user's key was used for its own requests. The role assignment is a change to the instance, not a result of the fixtures.
+
+Fixtures 16 and 17 (recipe share revoked, same `source_event_id` from another user) were rerun with `bob` as the `ADULT` user: both pass. This removes the earlier caveat that those rows showed behavior for admins only. The event fixtures were not otherwise rerun in this run.
 
 ## Findings
 
@@ -142,7 +148,6 @@ Findings 1, 2 and 4 are resolved in 0.4.0, see Run 4. Finding 4 was resolved by 
 
 ## Not covered
 
-- A second user without `ADMIN`. Rows 16 and 17 ran with two admins.
 - Whether the patch itself is correct. The run only shows what changed in the fixtures' answers.
 - A client that counts `lines`. On 0.4.0 the server documents `lines` as stock-log allocations, one per entry, so a correction can list several lines for one product. victual-kit only decodes `lines` and does not count them.
 - Anything a device produces: real payload fields, identifier behavior on edit, late delivery, revocation.

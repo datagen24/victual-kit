@@ -266,7 +266,7 @@ def build_recipes(client: Client, fixture: dict, world: World, prefix: str) -> N
             status, shared = client.call(
                 owner, "PUT", f"/api/consumption/recipes/{world.recipes[name]}/shares/{world.users[sharee][0]}", rights
             )
-            if status not in (200, 201):
+            if status not in (200, 201, 204):
                 raise RuntimeError(f"seed share {name}->{sharee}: {status} {shared}")
 
 
