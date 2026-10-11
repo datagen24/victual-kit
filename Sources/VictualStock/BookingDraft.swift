@@ -49,6 +49,10 @@ public struct BookingDraft: Hashable, Sendable {
     /// Consume and open: take a sub-product's stock when this one has none.
     public var allowSubstitution = false
 
+    /// The amount in stock when the form opened, so an inventory that changes
+    /// nothing can be caught here instead of answered `400` by the server.
+    private let amountInStock: Double?
+
     /// Starts a draft with the defaults a person most often wants.
     ///
     /// An inventory starts from what the server says is there, so correcting
@@ -57,6 +61,7 @@ public struct BookingDraft: Hashable, Sendable {
     public init(action: StockAction, productID: Int, product: ProductDetail?, now: Date = Date()) {
         self.action = action
         self.productID = productID
+        self.amountInStock = action == .inventory ? product?.stockAmount : nil
         self.amount = action == .inventory ? (product?.stockAmount ?? 0) : 1
         self.locationID = action == .transfer ? product?.location?.id : nil
         self.dueDate = now
@@ -91,19 +96,48 @@ public struct BookingDraft: Hashable, Sendable {
         action == .inventory ? 0...100_000 : 0.001...100_000
     }
 
+    /// The smallest amount worth booking. The server stored 0.0004 without
+    /// complaint, which is a typo rather than a quantity.
+    public static let smallestAmount = 0.001
+
     /// Whether the fields add up to a booking the server could accept.
     public var isValid: Bool {
-        guard productID > 0 else { return false }
-        if stockEntryID != nil, amount != 1 { return false }
+        // A transfer still missing a location is incomplete, not wrong.
+        let hasLocations = action != .transfer || (locationID != nil && destinationID != nil)
+        return problem == nil && hasLocations
+    }
+
+    /// What is wrong with the fields, in a sentence, or `nil` when nothing is.
+    ///
+    /// Only problems a person can see and fix.
+    public var problem: String? {
+        guard productID > 0 else { return "No product." }
+        if stockEntryID != nil, amount != 1 { return "A single container is booked one at a time." }
+        if usesPrice, action == .purchase || action == .inventory, price < 0 {
+            return "A price cannot be negative."
+        }
         switch action {
         case .inventory:
-            return amount >= 0
+            if amount < 0 { return "A count cannot be negative." }
+            if amount > 0, amount < Self.smallestAmount {
+                return "Counts below \(Self.smallestAmount) are not supported."
+            }
+            if let amountInStock, amount == amountInStock {
+                return "That is the amount already in stock."
+            }
         case .transfer:
-            guard let from = locationID, let to = destinationID else { return false }
-            return from != to && amount > 0
+            if amount < Self.smallestAmount { return Self.amountProblem }
+            if let from = locationID, let to = destinationID, from == to {
+                return "Choose two different locations."
+            }
         case .consume, .purchase, .open:
-            return amount > 0
+            if amount < Self.smallestAmount { return Self.amountProblem }
         }
+        return nil
+    }
+
+    private static var amountProblem: String {
+        "The amount must be at least \(smallestAmount)."
     }
 
     /// The booking these fields describe.
