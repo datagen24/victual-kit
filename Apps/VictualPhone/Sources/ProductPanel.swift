@@ -26,6 +26,12 @@ struct ProductPanel: View {
     /// Whether the name links to the product screen. Off on that screen.
     var linksToDetail = true
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// At the accessibility sizes a label column and three buttons no longer
+    /// fit side by side; the panel clipped at the left edge. Stack them instead.
+    private var stacked: Bool { typeSize.isAccessibilitySize }
+
     private var gate: CapabilityGate { workspace.capabilities }
     private var unit: QuantityUnit? { detail.stockQuantityUnit }
 
@@ -103,19 +109,31 @@ struct ProductPanel: View {
     }
 
     private func fact(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label).foregroundStyle(.secondary).frame(width: 72, alignment: .leading)
-            Text(value).monospacedDigit()
-        }
-        .accessibilityElement(children: .combine)
+        factRow(label) { Text(value).monospacedDigit() }
     }
 
     private func dueFact(_ due: Date) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Due").foregroundStyle(.secondary).frame(width: 72, alignment: .leading)
+        factRow("Due") {
             Text(due, format: .dateTime.year().month(.abbreviated).day())
                 .foregroundStyle(due < Calendar.current.startOfDay(for: .now) ? .red : .primary)
                 .monospacedDigit()
+        }
+    }
+
+    /// A label and its value: side by side, or one above the other when large
+    /// text leaves no room for a label column.
+    private func factRow<Value: View>(
+        _ label: String,
+        @ViewBuilder value: () -> Value
+    ) -> some View {
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+        return layout {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .frame(width: stacked ? nil : 72, alignment: .leading)
+            value()
         }
         .accessibilityElement(children: .combine)
     }
@@ -123,7 +141,10 @@ struct ProductPanel: View {
     // MARK: - What can be done
 
     private var actions: some View {
-        HStack(spacing: 8) {
+        let layout = stacked
+            ? AnyLayout(VStackLayout(spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
             Button {
                 Task { await workspace.bookOne(.consume, of: detail, entry: entry) }
             } label: {
@@ -150,9 +171,14 @@ struct ProductPanel: View {
                     .disabled(!gate.canWrite(action))
                 }
             } label: {
-                Label("More", systemImage: "ellipsis.circle")
-                    .labelStyle(.iconOnly)
-                    .frame(minWidth: 32)
+                if stacked {
+                    Label("More", systemImage: "ellipsis.circle")
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Label("More", systemImage: "ellipsis.circle")
+                        .labelStyle(.iconOnly)
+                        .frame(minWidth: 32)
+                }
             }
             .buttonStyle(.bordered)
             .accessibilityLabel("More bookings")
