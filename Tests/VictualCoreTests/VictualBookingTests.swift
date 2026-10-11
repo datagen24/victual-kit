@@ -365,3 +365,248 @@ struct BookingPreconditionTests {
         #expect(transport.recorder.requests.isEmpty)
     }
 }
+
+// MARK: - Responses captured from a Victual 0.4.0 server
+
+/// The `transfer` response as the server sent it. It holds two rows, `transfer_from` and
+/// `transfer_to`, which the specification's transaction type once left out.
+private let capturedTransferJSON = """
+    [
+      {
+        "id": 930,
+        "product_id": 170,
+        "amount": -1,
+        "best_before_date": "2026-10-11",
+        "purchased_date": "2026-10-11",
+        "used_date": null,
+        "spoiled": false,
+        "stock_id": "6acb975d2fe57",
+        "transaction_type": "transfer_from",
+        "price": 1.5,
+        "undone": 0,
+        "undone_timestamp": null,
+        "opened_date": null,
+        "location_id": 163,
+        "recipe_id": null,
+        "correlation_id": "6acb9f5abe6df",
+        "transaction_id": "6acb9f5aa292f",
+        "stock_row_id": 675,
+        "shopping_location_id": null,
+        "user_id": 4,
+        "row_created_timestamp": "2026-10-11T14:38:18.000000Z",
+        "note": null,
+        "opened_amount": null,
+        "opened_qu_id": null,
+        "opened_tare": null,
+        "opened_measured_at": null
+      },
+      {
+        "id": 931,
+        "product_id": 170,
+        "amount": 1,
+        "best_before_date": "2026-10-11",
+        "purchased_date": "2026-10-11",
+        "used_date": null,
+        "spoiled": false,
+        "stock_id": "6acb975d2fe57",
+        "transaction_type": "transfer_to",
+        "price": 1.5,
+        "undone": 0,
+        "undone_timestamp": null,
+        "opened_date": null,
+        "location_id": 164,
+        "recipe_id": null,
+        "correlation_id": "6acb9f5abe6df",
+        "transaction_id": "6acb9f5aa292f",
+        "stock_row_id": 724,
+        "shopping_location_id": null,
+        "user_id": 4,
+        "row_created_timestamp": "2026-10-11T14:38:18.000000Z",
+        "note": null,
+        "opened_amount": null,
+        "opened_qu_id": null,
+        "opened_tare": null,
+        "opened_measured_at": null
+      }
+    ]
+    """
+
+/// The `purchase` response as the server sent it.
+private let capturedPurchaseJSON = """
+    [
+      {
+        "id": 934,
+        "product_id": 170,
+        "amount": 1,
+        "best_before_date": "2026-12-01",
+        "purchased_date": "2026-10-11",
+        "used_date": null,
+        "spoiled": false,
+        "stock_id": "6acb9f812efe8",
+        "transaction_type": "purchase",
+        "price": 2,
+        "undone": 0,
+        "undone_timestamp": null,
+        "opened_date": null,
+        "location_id": 163,
+        "recipe_id": null,
+        "correlation_id": null,
+        "transaction_id": "6acb9f812ede7",
+        "stock_row_id": null,
+        "shopping_location_id": null,
+        "user_id": 4,
+        "row_created_timestamp": "2026-10-11T14:38:57.000000Z",
+        "note": null,
+        "opened_amount": null,
+        "opened_qu_id": null,
+        "opened_tare": null,
+        "opened_measured_at": null
+      }
+    ]
+    """
+
+/// The `open` response as the server sent it.
+private let capturedOpenJSON = """
+    [
+      {
+        "id": 935,
+        "product_id": 170,
+        "amount": 1,
+        "best_before_date": "2026-10-11",
+        "purchased_date": "2026-10-11",
+        "used_date": null,
+        "spoiled": false,
+        "stock_id": "6acb975d2fe57",
+        "transaction_type": "product-opened",
+        "price": 1.5,
+        "undone": 0,
+        "undone_timestamp": null,
+        "opened_date": "2026-10-11",
+        "location_id": 164,
+        "recipe_id": null,
+        "correlation_id": null,
+        "transaction_id": "6acb9f815783f",
+        "stock_row_id": 706,
+        "shopping_location_id": null,
+        "user_id": 4,
+        "row_created_timestamp": "2026-10-11T14:38:57.000000Z",
+        "note": null,
+        "opened_amount": null,
+        "opened_qu_id": null,
+        "opened_tare": null,
+        "opened_measured_at": null
+      }
+    ]
+    """
+
+/// The `consume` response as the server sent it.
+private let capturedConsumeJSON = """
+    [
+      {
+        "id": 936,
+        "product_id": 170,
+        "amount": -1,
+        "best_before_date": "2026-10-11",
+        "purchased_date": "2026-10-11",
+        "used_date": "2026-10-11",
+        "spoiled": false,
+        "stock_id": "6acb975d2fe57",
+        "transaction_type": "consume",
+        "price": 1.5,
+        "undone": 0,
+        "undone_timestamp": null,
+        "opened_date": "2026-10-11",
+        "location_id": 164,
+        "recipe_id": null,
+        "correlation_id": null,
+        "transaction_id": "6acb9f818e51d",
+        "stock_row_id": 706,
+        "shopping_location_id": null,
+        "user_id": 4,
+        "row_created_timestamp": "2026-10-11T14:38:57.000000Z",
+        "note": null,
+        "opened_amount": null,
+        "opened_qu_id": null,
+        "opened_tare": null,
+        "opened_measured_at": null
+      }
+    ]
+    """
+
+/// The `inventory` response as the server sent it.
+private let capturedInventoryJSON = """
+    [
+      {
+        "id": 937,
+        "product_id": 170,
+        "amount": 1,
+        "best_before_date": "2026-12-01",
+        "purchased_date": "2026-10-11",
+        "used_date": null,
+        "spoiled": false,
+        "stock_id": "6acb9f826c192",
+        "transaction_type": "inventory-correction",
+        "price": 2,
+        "undone": 0,
+        "undone_timestamp": null,
+        "opened_date": null,
+        "location_id": 163,
+        "recipe_id": null,
+        "correlation_id": null,
+        "transaction_id": "6acb9f826c030",
+        "stock_row_id": null,
+        "shopping_location_id": null,
+        "user_id": 4,
+        "row_created_timestamp": "2026-10-11T14:38:58.000000Z",
+        "note": null,
+        "opened_amount": null,
+        "opened_qu_id": null,
+        "opened_tare": null,
+        "opened_measured_at": null
+      }
+    ]
+    """
+
+@Suite("Captured booking responses")
+struct CapturedBookingResponseTests {
+    @Test("A transfer's two rows decode and share one transaction")
+    func transferDecodes() async throws {
+        let client = VictualClient.stubbed(StubTransport(status: 200, json: capturedTransferJSON))
+
+        let booking = try await client.transfer(
+            productID: 170,
+            amount: 1,
+            fromLocationID: 163,
+            toLocationID: 164
+        )
+
+        #expect(booking.rows.count == 2)
+        #expect(booking.rows.map(\.transactionType) == [.transferFrom, .transferTo])
+        #expect(booking.rows.map(\.amount) == [-1, 1])
+        #expect(booking.transactionID == "6acb9f5aa292f")
+        #expect(booking.isUndoable)
+    }
+
+    @Test("The other four bookings decode their captured responses")
+    func otherBookingsDecode() async throws {
+        let purchase = try await VictualClient.stubbed(
+            StubTransport(status: 200, json: capturedPurchaseJSON)
+        ).purchase(productID: 170, amount: 1)
+        #expect(purchase.rows.first?.transactionType == .purchase)
+
+        let open = try await VictualClient.stubbed(
+            StubTransport(status: 200, json: capturedOpenJSON)
+        ).open(productID: 170, amount: 1)
+        #expect(open.rows.first?.transactionType == .productOpened)
+
+        let consume = try await VictualClient.stubbed(
+            StubTransport(status: 200, json: capturedConsumeJSON)
+        ).consume(productID: 170, amount: 1)
+        #expect(consume.rows.first?.transactionType == .consume)
+
+        let inventory = try await VictualClient.stubbed(
+            StubTransport(status: 200, json: capturedInventoryJSON)
+        ).inventory(productID: 170, newAmount: 6)
+        #expect(inventory.rows.first?.transactionType == .inventoryCorrection)
+    }
+}

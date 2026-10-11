@@ -63,6 +63,10 @@ defect returning.
    ([issue #230](https://github.com/datagen24/victual/issues/230)). Retyping them now
    would refuse the server's `false`, so `Tests/VictualAPITests` asserts they stay
    `boolean`.
+8. **Transaction types the document omits.** `StockTransactionType` lists four values, but a
+   transfer writes `transfer_from` and `transfer_to`, and stock edits, measurements and
+   self-production write five more. The generated decoder refused them, so a transfer
+   succeeded and then reported an error. The seven missing values are added.
 
 ## Known upstream issues left in place
 

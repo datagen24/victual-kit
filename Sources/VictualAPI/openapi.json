@@ -15078,7 +15078,14 @@
 					"purchase",
 					"consume",
 					"inventory-correction",
-					"product-opened"
+					"product-opened",
+					"self-production",
+					"stock-edit-new",
+					"stock-edit-old",
+					"stock-measured-new",
+					"stock-measured-old",
+					"transfer_from",
+					"transfer_to"
 				]
 			},
 			"FileGroups": {

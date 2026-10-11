@@ -304,6 +304,35 @@ def retype_integer_flags(document: dict) -> list[str]:
     return retyped
 
 
+# Transaction types the server writes that the document's `StockTransactionType` leaves
+# out, in the order the server's `StockService` declares them.
+#
+# The enum lists four values, but a transfer writes `transfer_from` and `transfer_to`, and
+# a stock edit, a measurement and a self-production write the rest. The generated decoder
+# refuses an unlisted value, so a transfer succeeded on the server and then failed to
+# decode its own response. Confirmed against `services/StockService.php` and a live 0.4.0
+# transfer. Widening the enum asserts nothing the server does not already send.
+MISSING_TRANSACTION_TYPES = [
+    "self-production",
+    "stock-edit-new",
+    "stock-edit-old",
+    "stock-measured-new",
+    "stock-measured-old",
+    "transfer_from",
+    "transfer_to",
+]
+
+
+def widen_transaction_types(document: dict) -> list[str]:
+    """Adds the transaction types the server sends but the document omits."""
+    schema = document.get("components", {}).get("schemas", {}).get("StockTransactionType")
+    if not isinstance(schema, dict) or not isinstance(schema.get("enum"), list):
+        return []
+    added = [value for value in MISSING_TRANSACTION_TYPES if value not in schema["enum"]]
+    schema["enum"].extend(added)
+    return added
+
+
 def lint(document: dict) -> list[str]:
     """Report upstream modelling mistakes that are left in place deliberately.
 
@@ -344,6 +373,7 @@ def normalize(raw: bytes, overrides: dict[str, str]) -> tuple[dict, dict]:
     repaired = repair_dangling_refs(document)
     report["danglingRefsRepaired"] = repaired
     report["integerFlagsRetyped"] = retype_integer_flags(document)
+    report["transactionTypesAdded"] = widen_transaction_types(document)
 
     document["servers"] = [{"url": SERVER_URL, "description": SERVER_DESCRIPTION}]
     report["serverPlaceholderReplaced"] = True
