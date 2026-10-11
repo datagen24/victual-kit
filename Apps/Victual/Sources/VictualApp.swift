@@ -23,6 +23,7 @@ struct VictualApp: App {
                 .task { await session.restore() }
         }
         .defaultSize(width: 1_100, height: 700)
+        .commands { StockCommands() }
 
         Settings {
             SettingsView(session: session)
