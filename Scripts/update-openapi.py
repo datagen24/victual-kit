@@ -29,7 +29,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 UPSTREAM_REPO = "datagen24/victual"
-UPSTREAM_REF = "master"
+# A release tag, so the vendored document is reproducible. Move it deliberately when a new
+# release is adopted; track `master` only while a release is still being cut.
+UPSTREAM_REF = "v0.4.0"
 UPSTREAM_PATH = "victual.openapi.json"
 UPSTREAM_URL = (
     f"https://raw.githubusercontent.com/{UPSTREAM_REPO}/{UPSTREAM_REF}/{UPSTREAM_PATH}"

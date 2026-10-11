@@ -3,7 +3,7 @@
 	"info": {
 		"title": "Victual REST API",
 		"description": "Authentication is done via API keys (header *VICTUAL-API-KEY* or same named query parameter), which you can manage [here](PlaceHolderManageApiKeysUrl).<br>Additionally requests from within the frontend are also valid (via session cookie).<br><br>**Dates and times.** Every instant this API stores or sends is RFC 3339 in UTC with exactly six fractional digits - `2026-10-04T18:30:00.000000Z` - typed *format: date-time* (ADR-0027 decision 2, issue #650). The fixed width is part of the contract: text order is chronological order, so two values may be compared as strings. The one exception is *time_local* on the system time endpoint, the same instant with the server's offset (`2026-10-04T14:30:00.000000-04:00`). Fields whose column is a SQL DATE are calendar dates, typed *format: date* and written `YYYY-MM-DD`; they are never converted between zones. Days the server computes - due today, overdue, expiring in N days - are days in the server's configured time zone. A value sent without an offset - to the three write fields *tracked_time* and *done_time*, to a generic entity write, or as a `query[]` comparison - is a wall clock in the server's configured zone: a repeated hour names the earlier instant, and a skipped hour is refused with **400**. Send an offset to name any instant unambiguously. These values were local wall clocks in the server's zone, `YYYY-MM-DD HH:MM:SS`, until migration 0301 converted them.",
-		"version": "0.3.2",
+		"version": "0.4.0",
 		"license": {
 			"name": "MIT (code originating from upstream grocy) AND BSD-3-Clause (Victual)",
 			"url": "https://github.com/datagen24/victual/blob/master/LICENSE.md"
@@ -9539,7 +9539,7 @@
 					"Consumption recipes"
 				],
 				"summary": "Consume every line of a consumption recipe",
-				"description": "Requires STOCK_VIEW, STOCK_CONSUME and the consume right. Every line is booked in one transaction or none is: a missing conversion, a missing right or too little stock books nothing and records no event. The call is idempotent only when request_id is sent; a repeat answers 200 with replayed true. A location_id limits consumption to that location, and a shortfall there is a refusal, never a charge to another location. occurred_at, with an offset, sets the booked date to the date written in that offset.",
+				"description": "Requires STOCK_VIEW, STOCK_CONSUME and the consume right. Every line is booked in one transaction or none is: a missing conversion, a missing right or too little stock books nothing and records no event. The call is idempotent only when request_id is sent. An identical recipe_id, location_id and occurred_at submission answers 200 with replayed true. A changed input answers 409 request_id_conflict without booking. An older event with no stored input fingerprint answers 409 request_id_unverifiable; inspect the existing event before deciding whether a new booking is intended. Omitting occurred_at remains stable across retries; changing recipe lines does not change the original request. A location_id limits consumption to that location, and a shortfall there is a refusal, never a charge to another location. occurred_at, with an offset, sets the booked date to the date written in that offset.",
 				"requestBody": {
 					"required": false,
 					"content": {
@@ -10341,6 +10341,23 @@
 			},
 			"delete": {
 				"operationId": "deleteConsumptionEvent",
+				"requestBody": {
+					"required": false,
+					"description": "Optional deletion reason. A reason in the query parameter takes precedence.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"reason": {
+										"type": "string",
+										"enum": ["entered_in_error", "history_cleared", "medication_archived", "access_revoked", "unknown"]
+									}
+								}
+							}
+						}
+					}
+				},
 				"summary": "The source no longer has this event",
 				"responses": {
 					"200": {
@@ -15454,6 +15471,7 @@
 					},
 					"lines": {
 						"type": "array",
+						"description": "One line per stock-log allocation. Products may repeat after corrections or multi-row bookings. Sum amounts by product and location; line count is not a dose count.",
 						"items": {
 							"$ref": "#/components/schemas/ConsumptionExternalEventLine"
 						}
