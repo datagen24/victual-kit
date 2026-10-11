@@ -17,6 +17,15 @@ public enum StockScope: Hashable, Sendable, Identifiable {
     }
 }
 
+/// Which product group the table is limited to.
+public enum GroupFilter: Hashable, Sendable {
+    case all
+    /// Products that belong to no group.
+    case ungrouped
+    /// One group and every group nested inside it.
+    case group(Int)
+}
+
 /// The stock list: what is on hand, what needs attention, and what the table
 /// should currently show.
 ///
@@ -40,6 +49,11 @@ public final class StockStore {
 
     /// Quantity units by id. An amount cannot be rendered without one.
     public private(set) var quantityUnits: [Int: QuantityUnit] = [:]
+
+    /// Every product group, for the filter. Empty when the instance has none, or
+    /// when they could not be read: the filter is a convenience, and a failure
+    /// to list groups should not blank the stock.
+    public private(set) var productGroups: [ProductGroup] = []
 
     /// The locations tree, with each location's path already merged in.
     public private(set) var locations: [StorageLocation] = []
@@ -65,6 +79,9 @@ public final class StockStore {
     /// The text typed into the search field. Matched against product names.
     public var searchText: String = ""
 
+    /// The product group the table is limited to. Applies to every scope.
+    public var groupFilter: GroupFilter = .all
+
     public var sort: StockSort = .name
     public var sortAscending: Bool = true
 
@@ -81,6 +98,7 @@ public final class StockStore {
     public var rows: [StockRow] {
         unsortedRows
             .filter(matchesSearch)
+            .filter(matchesGroup)
             .sorted(by: sort, ascending: sortAscending)
     }
 
@@ -123,16 +141,19 @@ public final class StockStore {
             async let volatileTask = client.volatileStock()
             async let unitsTask = client.quantityUnits()
             async let locationsTask = client.locationTree()
+            async let groupsTask = try? client.productGroups()
 
             let stock = try await stockTask
             let volatileStock = try await volatileTask
             let units = try await unitsTask
             let tree = try await locationsTask
+            let groups = await groupsTask
 
             summaries = stock
             volatile = volatileStock
             quantityUnits = Dictionary(uniqueKeysWithValues: units.map { ($0.id, $0) })
             locations = tree
+            productGroups = groups ?? productGroups
             lastRefreshed = Date()
             state = .loaded
         } catch {
@@ -241,6 +262,21 @@ public final class StockStore {
             var row = row
             if pricesKnown[productID] != true { row.value = nil }
             return row
+        }
+    }
+
+    private func matchesGroup(_ row: StockRow) -> Bool {
+        let groupID = row.product?.productGroupID
+        switch groupFilter {
+        case .all:
+            return true
+        case .ungrouped:
+            return groupID == nil
+        case .group(let id):
+            guard let groupID, let group = productGroups.first(where: { $0.id == id }) else {
+                return false
+            }
+            return group.memberIDs.contains(groupID)
         }
     }
 

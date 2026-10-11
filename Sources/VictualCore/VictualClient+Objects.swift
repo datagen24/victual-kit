@@ -95,6 +95,20 @@ extension VictualClient {
         }
     }
 
+    /// Every product group, nested, with the groups inside each.
+    ///
+    /// One request: `product_groups_resolved` carries each group's path and
+    /// every ancestor/descendant pair, which is all a filter needs. An instance
+    /// with no groups returns an empty list.
+    public func productGroups() async throws(VictualError) -> [ProductGroup] {
+        do {
+            let rows = try await listObjects("product_groups_resolved", as: ResolvedProductGroup.self)
+            return ProductGroup.groups(from: rows)
+        } catch {
+            throw VictualError.mapping(error)
+        }
+    }
+
     /// Lists one entity, decoding rows into `rowType`.
     ///
     /// Deliberately not generic over the entity name in a typed way: the

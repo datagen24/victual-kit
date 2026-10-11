@@ -188,6 +188,87 @@ struct StockStoreTests {
         #expect(store.rows.first { $0.name == "Almonds" }?.value == nil)
     }
 
+    /// Dairy > Cheese > Hard, plus a root Bakery: the instance's own fixture shape.
+    private var groupedTable: RouteTable {
+        var table = populated
+        table.productGroupsResolved = """
+            [{"ancestor_product_group_id":1,"descendant_product_group_id":1,"depth":0,"path":"Dairy"},
+             {"ancestor_product_group_id":4,"descendant_product_group_id":4,"depth":0,"path":"Bakery"},
+             {"ancestor_product_group_id":2,"descendant_product_group_id":2,"depth":0,"path":"Dairy / Cheese"},
+             {"ancestor_product_group_id":3,"descendant_product_group_id":3,"depth":0,"path":"Dairy / Cheese / Hard"},
+             {"ancestor_product_group_id":1,"descendant_product_group_id":2,"depth":1,"path":"Dairy / Cheese"},
+             {"ancestor_product_group_id":2,"descendant_product_group_id":3,"depth":1,"path":"Dairy / Cheese / Hard"},
+             {"ancestor_product_group_id":1,"descendant_product_group_id":3,"depth":2,"path":"Dairy / Cheese / Hard"}]
+            """
+        table.stock = """
+            [{"product_id": 10, "amount": 1, "product": {"id": 10, "name": "Milk", "product_group_id": 1}},
+             {"product_id": 11, "amount": 1, "product": {"id": 11, "name": "Cheddar", "product_group_id": 2}},
+             {"product_id": 12, "amount": 1, "product": {"id": 12, "name": "Parmesan", "product_group_id": 3}},
+             {"product_id": 13, "amount": 1, "product": {"id": 13, "name": "Flour", "product_group_id": 4}},
+             {"product_id": 14, "amount": 1, "product": {"id": 14, "name": "Salt"}}]
+            """
+        return table
+    }
+
+    @Test("Product groups arrive nested, with their paths and members")
+    func readsGroupTree() async {
+        let (client, _) = testClient(groupedTable)
+        let store = StockStore(client: client)
+        await store.refresh()
+
+        #expect(store.productGroups.map(\.path) == [
+            "Bakery", "Dairy", "Dairy / Cheese", "Dairy / Cheese / Hard",
+        ])
+        let dairy = store.productGroups.first { $0.path == "Dairy" }
+        #expect(dairy?.memberIDs == [1, 2, 3])
+        #expect(dairy?.depth == 0)
+        #expect(store.productGroups.last?.depth == 2)
+        #expect(store.productGroups.last?.name == "Hard")
+    }
+
+    @Test("Choosing a parent group includes its descendants")
+    func parentIncludesDescendants() async {
+        let (client, _) = testClient(groupedTable)
+        let store = StockStore(client: client)
+        await store.refresh()
+
+        store.groupFilter = .group(1)
+        #expect(Set(store.rows.map(\.name)) == ["Milk", "Cheddar", "Parmesan"])
+
+        store.groupFilter = .group(2)
+        #expect(Set(store.rows.map(\.name)) == ["Cheddar", "Parmesan"])
+
+        store.groupFilter = .group(3)
+        #expect(Set(store.rows.map(\.name)) == ["Parmesan"])
+    }
+
+    @Test("All groups and Ungrouped are the two ends")
+    func allAndUngrouped() async {
+        let (client, _) = testClient(groupedTable)
+        let store = StockStore(client: client)
+        await store.refresh()
+
+        #expect(store.rows.count == 5)
+        store.groupFilter = .ungrouped
+        #expect(store.rows.map(\.name) == ["Salt"])
+        store.groupFilter = .all
+        #expect(store.rows.count == 5)
+    }
+
+    @Test("Instances with no groups, or groups that cannot be read, still list stock")
+    func noGroupsIsFine() async {
+        var failing = groupedTable
+        failing.failures = ["/objects/product_groups_resolved": 500]
+        let (client, _) = testClient(failing)
+        let store = StockStore(client: client)
+
+        await store.refresh()
+
+        #expect(store.state == .loaded)
+        #expect(store.productGroups.isEmpty)
+        #expect(store.rows.count == 5)
+    }
+
     @Test("Search narrows by name, case-insensitively")
     func searchFilters() async {
         let (client, _) = testClient(populated)
