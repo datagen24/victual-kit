@@ -331,7 +331,7 @@ Expected: `401`.
 - There is no orange banner above the table. Neither a newer-server warning nor the line
   `This key was not saved, and will have to be entered again next launch.` appears.
 - The settings window has a **Connected** section: **Victual** `0.4.0` and **Database**
-  `PostgreSQL 16.15`, then **Disconnect** and **Forget this instance** buttons.
+  the engine name (`PostgreSQL 16.15` on the dev instance), then **Disconnect** and **Forget this instance** buttons.
 - The footer under them reads `Disconnecting keeps the API key in the Keychain. Forgetting
   removes it.`
 
@@ -811,7 +811,9 @@ Expected: two entries, amounts 2 and 3.
 
 - The inspector loads. **In stock** reads `0 Packs` and **Minimum** reads `2 Packs`.
   **Next due** reads `—`. **Stock entries** shows **Nothing in stock.**
-- The price rows show whatever the server reports. Compare them with the server check.
+- **Last price** reads `0.00`, **Average price** reads `—` and **Stock value** reads `0.00`.
+  This follows the server's answer in the check below. It is another case of zero where a
+  dash would be truer. See the observations.
 - All five **Book** items are enabled for the Adult key.
 
 **Server check.**
@@ -1327,8 +1329,10 @@ switch Wi-Fi off, or unplug the cable.
 
 **Purpose.** The app reads permissions once. A later change is caught by the server's 403.
 
-**Needs.** Connected with the Child key (see K1, steps 1 to 3). `mac-Eggs` selected. This case
-changes the Child test user's role. Other sessions that use the Child key will see it.
+**Needs.** K1 complete, and still connected as the Child key. `mac-Eggs` selected. Run K1
+before this case. K2 follows it. This case changes the Child test user's role, and other
+sessions that use the Child key will see it. Keep this terminal open: K2 reuses the
+variables set here.
 
 **Steps.**
 
@@ -1487,6 +1491,9 @@ vsend PUT /users/$CHILD_ID/roles "{\"roles\":[$ROLE_CHILD]}"
   `STOCK_OPEN`, `STOCK_INVENTORY` and `STOCK_TRANSFER`.
 - The list still loads, with no price column.
 - Step 3 prints nothing (HTTP 204).
+- Afterwards, open the settings window, replace the key with the Adult key and click
+  **Connect**. Connecting as the Child key replaced the saved key, so a relaunch would
+  otherwise restore the Child key.
 
 **Server check.**
 
@@ -1727,7 +1734,8 @@ Overall: [ ] Accept  [ ] Accept with findings  [ ] Reject
 
 After the run: restore the dev instance with `Scripts/seed-dev-household.py`, restore the
 Child user's role if you ran E3, and run `git checkout Apps/Victual/project.yml` if you applied
-the local ATS change.
+the local ATS change. If the saved key should be the Adult key again, connect with it once
+in the settings window.
 
 ## Observations from reading the code
 
