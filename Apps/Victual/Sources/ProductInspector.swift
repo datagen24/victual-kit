@@ -179,7 +179,7 @@ private struct EntryRow: View {
                             due.formatted(.dateTime.year().month(.abbreviated).day()),
                             systemImage: "calendar"
                         )
-                        .foregroundStyle(due < Date() ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(due < Calendar.current.startOfDay(for: Date()) ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
                     }
                     if let locationName {
                         Label(locationName, systemImage: "mappin.and.ellipse")

@@ -84,8 +84,11 @@ struct MappingEditor: View {
             }
 
             Section {
-                TextField("None", text: $draft.defaultQuantityText)
-                    .keyboardType(.decimalPad)
+                LabeledContent("Default quantity") {
+                    TextField("None", text: $draft.defaultQuantityText)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                }
                 DatePicker("Count doses from", selection: $draft.effectiveFrom)
             } header: {
                 Text("Optional")
