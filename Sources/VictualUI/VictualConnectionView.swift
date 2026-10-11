@@ -21,8 +21,7 @@ public struct VictualConnectionView: View {
         Form {
             Section {
                 addressField
-                SecureField("API key", text: $session.apiKeyText)
-                    .disabled(session.state.isConnecting)
+                apiKeyField
             } header: {
                 Text("Instance")
             } footer: {
@@ -38,6 +37,12 @@ public struct VictualConnectionView: View {
                     }
                 }
                 .disabled(!session.canConnect)
+
+                // An unreachable host takes the request timeout to fail; the
+                // user should not have to sit through it.
+                if session.state.isConnecting {
+                    Button("Cancel", role: .cancel, action: session.disconnect)
+                }
             }
 
             statusSection
@@ -45,6 +50,27 @@ public struct VictualConnectionView: View {
         }
         .onChange(of: session.state.isConnected) { _, isConnected in
             if isConnected { onConnected?() }
+        }
+    }
+
+    /// The key field, with a way to empty it.
+    ///
+    /// A secure field cannot be selected into and the key it holds is masked,
+    /// so after a disconnect a person had no way to replace it: typing and
+    /// pasting both append. The button empties it.
+    private var apiKeyField: some View {
+        HStack {
+            SecureField("API key", text: $session.apiKeyText)
+                .disabled(session.state.isConnecting)
+            if !session.apiKeyText.isEmpty && !session.state.isConnecting {
+                Button {
+                    session.apiKeyText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Clear API key")
+            }
         }
     }
 

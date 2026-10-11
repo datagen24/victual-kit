@@ -131,6 +131,25 @@ struct VictualSessionTests {
         #expect(!session(apiKeyText: "", transport: transport).canConnect)
     }
 
+    @Test("Cancelling a connection that never answers returns to disconnected")
+    func cancelStopsAnAttemptInFlight() async {
+        let transport = StubTransport { _, _, _, _ in
+            try await Task.sleep(for: .seconds(60))
+            throw CancellationError()
+        }
+        let session = session(transport: transport)
+
+        session.connect()
+        while !session.state.isConnecting { await Task.yield() }
+        session.disconnect()
+        await session.waitForConnectionAttempt()
+
+        #expect(session.state.error == nil)
+        #expect(!session.state.isConnected && !session.state.isConnecting)
+        #expect(session.client == nil)
+        #expect(session.apiKeyText == "test-key")
+    }
+
     @Test("Disconnecting drops the client but keeps what was typed")
     func disconnectKeepsCredentials() async {
         let session = session(transport: StubTransport(status: 200, json: systemInfoJSON))

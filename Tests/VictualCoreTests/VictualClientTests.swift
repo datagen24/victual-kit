@@ -189,3 +189,12 @@ struct VictualAPIKeyTests {
         #expect(VictualAPIKey("abc123").isWellFormed)
     }
 }
+
+@Suite("VictualClient default session")
+struct VictualClientSessionTests {
+    @Test("A silent host fails in seconds, not the 60 a shared session waits")
+    func shortRequestTimeout() {
+        let seconds = VictualClient.defaultSession.configuration.timeoutIntervalForRequest
+        #expect(seconds > 0 && seconds <= 20)
+    }
+}
