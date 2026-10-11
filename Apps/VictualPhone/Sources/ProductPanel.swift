@@ -101,9 +101,9 @@ struct ProductPanel: View {
     }
 
     private var stockText: String {
-        var text = QuantityUnit.describe(detail.stockAmount, in: unit)
-        if detail.stockAmountOpened > 0 {
-            text += ", \(QuantityUnit.describe(detail.stockAmountOpened, in: unit)) opened"
+        var text = QuantityUnit.describe(detail.displayedStockAmount, in: unit)
+        if detail.displayedStockAmountOpened > 0 {
+            text += ", \(QuantityUnit.describe(detail.displayedStockAmountOpened, in: unit)) opened"
         }
         return text
     }

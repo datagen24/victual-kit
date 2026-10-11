@@ -139,6 +139,18 @@ struct StockStoreTests {
         #expect(row?.amountText == "0 Packs")
     }
 
+    @Test("The plain list marks a product that is below its minimum")
+    func allListShowsShortfall() async {
+        let (client, _) = testClient(populated)
+        let store = StockStore(client: client)
+        await store.refresh()
+
+        let almonds = store.rows.first { $0.name == "Almonds" }
+        let cookies = store.rows.first { $0.name == "Cookies" }
+        #expect(almonds?.amountMissing == 4)
+        #expect(cookies?.amountMissing == nil)
+    }
+
     @Test("A parent product shows its sub-products' stock too")
     func parentShowsAggregate() async {
         var table = populated

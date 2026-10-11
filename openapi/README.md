@@ -70,6 +70,9 @@ defect returning.
 9. **`missing_products` entries omit their `product`.** The server embeds the full product, as
    `GET /stock` does, so a below-minimum row can show its unit. The existing product schema
    is referenced.
+10. **Aggregated amounts missing from the product detail.** `stock_amount_aggregated` and
+    `stock_amount_opened_aggregated` are sent for a parent product but not documented. Both
+    are added as numbers.
 
 ## Known upstream issues left in place
 

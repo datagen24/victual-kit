@@ -57,11 +57,15 @@ struct ProductInspector: View {
 
     private func summary(_ detail: ProductDetail) -> some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 6) {
-            row("In stock", QuantityUnit.describe(detail.stockAmount, in: detail.stockQuantityUnit))
-            if detail.stockAmountOpened > 0 {
+            row(
+                "In stock",
+                QuantityUnit.describe(detail.displayedStockAmount, in: detail.stockQuantityUnit)
+            )
+            if detail.displayedStockAmountOpened > 0 {
                 row(
                     "Opened",
-                    QuantityUnit.describe(detail.stockAmountOpened, in: detail.stockQuantityUnit)
+                    QuantityUnit.describe(
+                        detail.displayedStockAmountOpened, in: detail.stockQuantityUnit)
                 )
             }
             // The server sends 0 for a product nobody has measured; a row of

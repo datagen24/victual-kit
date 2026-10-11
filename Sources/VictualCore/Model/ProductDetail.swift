@@ -15,6 +15,26 @@ public struct ProductDetail: Hashable, Sendable, Identifiable {
     public var stockAmount: Double
     /// How much of ``stockAmount`` is in opened containers.
     public var stockAmountOpened: Double
+    /// The amount including sub-products, filled by the server for a parent.
+    public var stockAmountAggregated: Double?
+    /// Opened amount including sub-products.
+    public var stockAmountOpenedAggregated: Double?
+    /// Whether the aggregated amounts are filled.
+    public var isAggregatedAmount: Bool
+
+    /// What to show as "in stock": a parent's total across its sub-products
+    /// when the server fills it, otherwise the product's own amount.
+    ///
+    /// Bookings keep using ``stockAmount``, which is what an inventory counts.
+    public var displayedStockAmount: Double {
+        (isAggregatedAmount ? stockAmountAggregated : nil) ?? stockAmount
+    }
+
+    /// Opened amount to show, on the same rule as ``displayedStockAmount``.
+    public var displayedStockAmountOpened: Double {
+        (isAggregatedAmount ? stockAmountOpenedAggregated : nil) ?? stockAmountOpened
+    }
+
     /// The measured — not merely counted — contents of opened, measured
     /// containers. Kept separate from the two amounts above rather than folded
     /// into them.
@@ -57,6 +77,9 @@ public struct ProductDetail: Hashable, Sendable, Identifiable {
         stockAmount: Double = 0,
         stockAmountOpened: Double = 0,
         stockAmountMeasured: Double? = nil,
+        stockAmountAggregated: Double? = nil,
+        stockAmountOpenedAggregated: Double? = nil,
+        isAggregatedAmount: Bool = false,
         stockValue: Double? = nil,
         lastPrice: Double? = nil,
         averagePrice: Double? = nil,
@@ -79,6 +102,9 @@ public struct ProductDetail: Hashable, Sendable, Identifiable {
         self.stockAmount = stockAmount
         self.stockAmountOpened = stockAmountOpened
         self.stockAmountMeasured = stockAmountMeasured
+        self.stockAmountAggregated = stockAmountAggregated
+        self.stockAmountOpenedAggregated = stockAmountOpenedAggregated
+        self.isAggregatedAmount = isAggregatedAmount
         self.stockValue = stockValue
         self.lastPrice = lastPrice
         self.averagePrice = averagePrice
@@ -109,6 +135,9 @@ extension ProductDetail {
             stockAmount: schema.stockAmount ?? 0,
             stockAmountOpened: schema.stockAmountOpened ?? 0,
             stockAmountMeasured: schema.stockAmountMeasured,
+            stockAmountAggregated: schema.stockAmountAggregated,
+            stockAmountOpenedAggregated: schema.stockAmountOpenedAggregated,
+            isAggregatedAmount: schema.isAggregatedAmount ?? false,
             // The four price fields cross straight over: absent stays absent.
             stockValue: schema.stockValue,
             lastPrice: schema.lastPrice,

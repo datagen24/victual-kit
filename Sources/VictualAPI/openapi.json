@@ -13491,6 +13491,12 @@
 						"items": {
 							"$ref": "#/components/schemas/ProductSubstitutionResolved"
 						}
+					},
+					"stock_amount_aggregated": {
+						"type": "number"
+					},
+					"stock_amount_opened_aggregated": {
+						"type": "number"
 					}
 				},
 				"example": {
