@@ -64,7 +64,9 @@ struct ProductInspector: View {
                     QuantityUnit.describe(detail.stockAmountOpened, in: detail.stockQuantityUnit)
                 )
             }
-            if let measured = detail.stockAmountMeasured {
+            // The server sends 0 for a product nobody has measured; a row of
+            // "Measured 0" on every product says nothing.
+            if let measured = detail.stockAmountMeasured, measured > 0 {
                 row(
                     "Measured",
                     QuantityUnit.describe(measured, in: detail.stockQuantityUnit),

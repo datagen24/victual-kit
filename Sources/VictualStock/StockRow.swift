@@ -65,26 +65,45 @@ public struct StockRow: Identifiable, Hashable, Sendable {
 
 extension StockRow {
     /// A row from a `GET /stock` summary.
+    ///
+    /// A parent product reports its own stock in `amount` and its own plus its
+    /// sub-products' in `amount_aggregated`; the aggregate is what a household
+    /// means by "how much pasta is there", so it is shown when the server fills it.
+    ///
+    /// The server sends a `value` of 0 for stock with no recorded price, which a
+    /// location view renders as unknown. A zero here is shown the same way,
+    /// since 0 and "unpriced" cannot be told apart in this response.
     init(_ summary: StockSummary, units: [Int: QuantityUnit]) {
+        let aggregated = summary.isAggregatedAmount
         self.init(
             productID: summary.productID,
             name: summary.displayName,
-            amount: summary.amount,
-            amountOpened: summary.amountOpened,
-            value: summary.value,
+            amount: (aggregated ? summary.amountAggregated : nil) ?? summary.amount,
+            amountOpened: (aggregated ? summary.amountOpenedAggregated : nil)
+                ?? summary.amountOpened,
+            value: summary.value.flatMap { $0 == 0 ? nil : $0 },
             nextDueDate: summary.nextDueDate,
             unit: summary.product?.stockQuantityUnitID.flatMap { units[$0] },
             product: summary.product
         )
     }
 
-    /// A row from the below-minimum bucket, which carries only four fields.
-    init(_ missing: MissingProduct, units: [Int: QuantityUnit], product: ProductSummary?) {
+    /// A row from the below-minimum bucket.
+    ///
+    /// The bucket says how much is missing, not how much is there, so the amount
+    /// comes from the product's stock row when it has one. A product with no
+    /// stock row has none on hand, and takes its unit from the product the
+    /// bucket embeds.
+    init(_ missing: MissingProduct, units: [Int: QuantityUnit], stock: StockSummary?) {
+        let product = missing.product ?? stock?.product
+        let row = stock.map { StockRow($0, units: units) }
         self.init(
             productID: missing.id,
             name: missing.name,
-            amount: 0,
-            value: nil,
+            amount: row?.amount ?? 0,
+            amountOpened: row?.amountOpened ?? 0,
+            value: row?.value,
+            nextDueDate: row?.nextDueDate,
             unit: product?.stockQuantityUnitID.flatMap { units[$0] },
             product: product,
             amountMissing: missing.amountMissing

@@ -67,6 +67,9 @@ defect returning.
    transfer writes `transfer_from` and `transfer_to`, and stock edits, measurements and
    self-production write five more. The generated decoder refused them, so a transfer
    succeeded and then reported an error. The seven missing values are added.
+9. **`missing_products` entries omit their `product`.** The server embeds the full product, as
+   `GET /stock` does, so a below-minimum row can show its unit. The existing product schema
+   is referenced.
 
 ## Known upstream issues left in place
 

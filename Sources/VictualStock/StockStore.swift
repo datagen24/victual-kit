@@ -181,11 +181,7 @@ public final class StockStore {
             return volatile.expired.map { StockRow($0, units: quantityUnits) }
         case .status(.belowMinimum):
             return volatile.belowMinimum.map {
-                StockRow(
-                    $0,
-                    units: quantityUnits,
-                    product: summary(for: $0.id)?.product
-                )
+                StockRow($0, units: quantityUnits, stock: summary(for: $0.id))
             }
         case .location:
             return rowsFromLocationEntries()

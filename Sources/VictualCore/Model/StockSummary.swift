@@ -110,12 +110,22 @@ public struct MissingProduct: Hashable, Sendable, Identifiable {
     public var amountMissing: Double
     /// Whether some of the product is in stock, just not enough of it.
     public var isPartlyInStock: Bool
+    /// The product, which the server embeds. It carries the stock unit even for
+    /// a product with no stock row to take one from.
+    public var product: ProductSummary?
 
-    public init(id: Int, name: String, amountMissing: Double = 0, isPartlyInStock: Bool = false) {
+    public init(
+        id: Int,
+        name: String,
+        amountMissing: Double = 0,
+        isPartlyInStock: Bool = false,
+        product: ProductSummary? = nil
+    ) {
         self.id = id
         self.name = name
         self.amountMissing = amountMissing
         self.isPartlyInStock = isPartlyInStock
+        self.product = product
     }
 }
 
@@ -126,7 +136,8 @@ extension MissingProduct {
             id: id,
             name: schema.name ?? "Product \(id)",
             amountMissing: schema.amountMissing ?? 0,
-            isPartlyInStock: .fromWireFlag(schema.isPartlyInStock)
+            isPartlyInStock: .fromWireFlag(schema.isPartlyInStock),
+            product: schema.product.flatMap(ProductSummary.init)
         )
     }
 }

@@ -333,6 +333,29 @@ def widen_transaction_types(document: dict) -> list[str]:
     return added
 
 
+def embed_product_in_missing_products(document: dict) -> bool:
+    """Documents the `product` the server embeds in each below-minimum entry.
+
+    `GET /stock/volatile` sends each `missing_products` entry with its full
+    product, as `GET /stock` does, but the document lists only four fields. The
+    product carries the stock unit, which is what lets a product with no stock
+    row at all be shown with its unit. Same schema `GET /stock` already uses.
+    """
+    schemas = document.get("components", {}).get("schemas", {})
+    items = (
+        schemas.get("CurrentVolatilStockResponse", {})
+        .get("properties", {})
+        .get("missing_products", {})
+        .get("items")
+    )
+    if not isinstance(items, dict) or "product" in items.get("properties", {}):
+        return False
+    items.setdefault("properties", {})["product"] = {
+        "$ref": "#/components/schemas/ProductWithoutUserfields"
+    }
+    return True
+
+
 def lint(document: dict) -> list[str]:
     """Report upstream modelling mistakes that are left in place deliberately.
 
@@ -374,6 +397,7 @@ def normalize(raw: bytes, overrides: dict[str, str]) -> tuple[dict, dict]:
     report["danglingRefsRepaired"] = repaired
     report["integerFlagsRetyped"] = retype_integer_flags(document)
     report["transactionTypesAdded"] = widen_transaction_types(document)
+    report["missingProductsEmbedProduct"] = embed_product_in_missing_products(document)
 
     document["servers"] = [{"url": SERVER_URL, "description": SERVER_DESCRIPTION}]
     report["serverPlaceholderReplaced"] = True

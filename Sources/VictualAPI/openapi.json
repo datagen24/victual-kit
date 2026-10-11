@@ -14557,6 +14557,9 @@
 								},
 								"is_partly_in_stock": {
 									"type": "integer"
+								},
+								"product": {
+									"$ref": "#/components/schemas/ProductWithoutUserfields"
 								}
 							}
 						}
