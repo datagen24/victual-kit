@@ -76,33 +76,26 @@ public struct VictualClient: Sendable {
     }
 
     /// Creates a client backed by `URLSession`.
+    ///
+    /// - Parameter session: A session to send everything through. Omitted, the
+    ///   client uses ``OperationTimeouts``: a short limit for reads, a longer
+    ///   one for writes and a longest for medication synchronization.
     public init(
         server: VictualServer,
         apiKey: VictualAPIKey,
-        session: URLSession = VictualClient.defaultSession,
+        session: URLSession? = nil,
         middlewares: [any ClientMiddleware] = []
     ) {
+        let transport: any ClientTransport =
+            session.map { URLSessionTransport(configuration: .init(session: $0)) }
+            ?? TimeoutRoutingTransport()
         self.init(
             server: server,
             apiKey: apiKey,
-            transport: URLSessionTransport(
-                configuration: .init(session: session)
-            ),
+            transport: transport,
             middlewares: middlewares
         )
     }
-
-    /// The session a client uses unless told otherwise.
-    ///
-    /// `URLSession.shared` waits 60 seconds for a silent host, which is how long
-    /// the connection form spun against a mistyped address. Fifteen seconds
-    /// without a byte is long for a server on the same network and short enough
-    /// that a wrong address fails while the person is still looking.
-    public static let defaultSession: URLSession = {
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 15
-        return URLSession(configuration: configuration)
-    }()
 
     /// The transport plus its middleware chain, as the generated client sees it.
     ///

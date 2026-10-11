@@ -190,11 +190,21 @@ struct VictualAPIKeyTests {
     }
 }
 
-@Suite("VictualClient default session")
-struct VictualClientSessionTests {
-    @Test("A silent host fails in seconds, not the 60 a shared session waits")
-    func shortRequestTimeout() {
-        let seconds = VictualClient.defaultSession.configuration.timeoutIntervalForRequest
-        #expect(seconds > 0 && seconds <= 20)
+@Suite("Operation timeouts")
+struct OperationTimeoutTests {
+    private func limit(_ method: HTTPRequest.Method, _ path: String) -> TimeInterval {
+        OperationTimeouts().limit(for: HTTPRequest(method: method, scheme: nil, authority: nil, path: path))
+    }
+
+    @Test("Reads give up fast, writes wait longer, synchronization longest")
+    func limitsByOperation() {
+        let timeouts = OperationTimeouts()
+
+        #expect(limit(.get, "/stock") == timeouts.read)
+        #expect(limit(.post, "/stock/products/7/consume") == timeouts.write)
+        #expect(limit(.post, "/stock/transactions/abc/undo") == timeouts.write)
+        #expect(limit(.put, "/consumption/events/health/abc") == timeouts.synchronization)
+        #expect(limit(.get, "/consumption/events") == timeouts.read)
+        #expect(timeouts.read < timeouts.write && timeouts.write < timeouts.synchronization)
     }
 }
