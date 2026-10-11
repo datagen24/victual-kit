@@ -100,6 +100,22 @@ struct BookingControllerTests {
         #expect(controller.canUndoLast)
     }
 
+    @Test("A 403 makes the gate read the key's permissions again")
+    func forbiddenRefreshesPermissions() async {
+        var table = RouteTable()
+        table.failures = ["/stock/products/7/consume": 403]
+        let (client, transport) = testClient(table)
+        let gate = CapabilityGate(client: client)
+        let controller = BookingController(client: client, gate: gate)
+
+        let ok = await controller.perform(.consume(productID: 7, amount: 1))
+
+        #expect(!ok)
+        #expect(controller.error == .forbidden)
+        #expect(gate.state == .loaded)
+        #expect(transport.recorder.requests.contains { $0.request.path == "/user/capabilities" })
+    }
+
     @Test("A locally-refused booking never reaches the server")
     func refusesLocallyInvalidBooking() async {
         let (client, transport) = testClient()

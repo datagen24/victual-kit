@@ -45,6 +45,7 @@ final class StockWorkspace {
             // Something changed on the server — another device, the web UI, a
             // chore. Re-read rather than guessing what moved.
             await self?.refreshAll()
+            await self?.capabilities.load()
         }
     }
 
