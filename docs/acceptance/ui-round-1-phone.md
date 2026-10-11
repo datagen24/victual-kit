@@ -16,10 +16,12 @@ Screenshots were taken (49 files) but are deliberately not committed; the filena
 
 An **unsigned** build (`CODE_SIGNING_ALLOWED=NO`) behaved as if connecting did nothing: the process stayed alive, the
 Connect form stayed up, and no error was shown, for the nip.io host and for the bare IP. A copy re-signed ad hoc with
-a keychain entitlement connected normally. I did not capture logs, so I cannot say whether the cause was the missing
-keychain entitlement, App Transport Security, or both (I changed ATS and signing together; see D1). Everything after
-case 1 was run on a build signed with `CODE_SIGN_IDENTITY=-` and, for the first connect, with ATS relaxed in the
-Info.plist of a throwaway copy. That is a signing/test artifact, but D8 records the missing failure UI.
+a keychain entitlement connected normally.
+
+I did not capture logs, so I cannot say whether the cause was the missing keychain entitlement, App Transport
+Security, or both (I changed ATS and signing together; see D1). Everything after case 1 was run on a build signed with
+`CODE_SIGN_IDENTITY=-` and, for the first connect, with ATS relaxed in the Info.plist of a throwaway copy. That is a
+signing and test artifact, but D8 records the missing failure UI.
 
 ## Results
 
@@ -53,10 +55,10 @@ Legend: PASS, FAIL (defect), PARTIAL, BLOCKED, NOT RUN.
 | 6a | Relaunch persistence | terminate and relaunch | stays connected | Reconnected without retyping (ad-hoc signed build only; unsigned build crashes, D8) | PASS | c6-relaunch-after-failed.png | |
 | 6b | Disconnect | Connection > Disconnect | back to Connect form, key kept, fields prefilled | As described, key still masked in the form | PASS | c6-disconnected.png | |
 | 6c | Forget this instance | Connection > Forget | key removed, form empty, survives relaunch | Empty form, empty after relaunch | PASS | c6-relaunch-after-forget.png | |
-| 6d | Replace key on the Connect form | key field prefilled | easy to clear a masked key | **No clear button, and pasting appends** to the old text; the old key could not be removed in the UI (I reset the simulator keychain to get on) | FAIL | | Low (D9) |
+| 6d | Replace key on the Connect form | key field prefilled | clearing a masked key is possible | **No clear button, and pasting appends** to the old text; the old key could not be removed in the UI (I reset the simulator keychain to get on) | FAIL | | Low (D9) |
 | 7a | Medications entry gated by `GET /api/consumption/capabilities` | connect to the real server | entry appears only with capabilities | Settings shows Medications and Refills; the real server advertises `manual_consume`, `mappings`, etc. | PASS | c6-settings.png | |
 | 7b | Real server, nothing shared in Health | open Medications, Choose, Set up | explains there is nothing shared | Authorization list says "No matching medications saved in Health". The setup wizard then says **"Every medication you share is already settled"** when nothing is shared at all | FAIL | c7-setup-real.png | Medium (D10) |
-| 7c | Demo server on, wizard, mapping editor, review list | Debug > Demo medication server | walk through | Demo switch works (needs a held tap; a quick tap did not toggle, see D11). With a real simulator Health medication (Acetaminophen 500 mg, logged one dose via the Health app), it appears as "Needs mapping"; the editor offers Product/Recipe, product picker, unit, location rule, default quantity, count-doses-from date; saved as "Mapped"; Sync now raised a review item ("Health calls the unit this: count", Approve) which resolved | PASS | c7-meds-shared.png, c7-mapping-editor.png, c7-sync-done.png | |
+| 7c | Demo server on, wizard, mapping editor, review list | Debug > Demo medication server | walk through | Demo switch works (needs a held tap, see D11). A simulator Health medication (Acetaminophen 500 mg, one logged dose) appears as "Needs mapping"; the editor offers its fields; saved as "Mapped"; Sync now raised a review item ("Health calls the unit this: count") that Approve resolved | PASS | c7-meds-shared.png, c7-mapping-editor.png, c7-sync-done.png | |
 | 7d | Mapping editor detail | | labelled fields | The default-quantity field is an **unlabelled text field showing only the placeholder "None"**. The product picker is an unsearchable flat list; switching the location rule moves other rows (Organizer row disappears) | PARTIAL | c7-mapping-filled.png | Low (D12) |
 | 8a | Dynamic Type, largest | AX-XXXL | usable | Stock list wraps names mid-word. **Product screen clips its content at the left edge**: labels "In stock/Due/Where" are cut and values overflow | FAIL | c8-dyntype-product.png, c8-dyntype-list.png | **High** (D13) |
 | 8b | VoiceOver labels | | named controls | Not read from the accessibility tree (no tree tool in this session). Source review: only 6 `accessibilityLabel/Hint/Element` uses; most controls use `Label("..", systemImage:)`, which is named; icon-only buttons found have labels ("Dismiss", "More bookings") | NOT RUN | | |
@@ -72,11 +74,12 @@ Totals: **PASS 18, FAIL 6, PARTIAL 8, BLOCKED 3, NOT RUN 2.**
 
 **Most likely no: the shipped Info.plist (`NSAllowsLocalNetworking` only) did not connect to
 `http://<name>.nip.io`, and the same app connected once ATS was relaxed.** That fits Apple's documented behaviour:
-`NSAllowsLocalNetworking` exempts local names (`.local`, unqualified hostnames) and IP addresses, while a nip.io name
-is an ordinary DNS name and needs HTTPS or an `NSExceptionDomains` entry. **Caveat:** I changed signing and ATS at
-the same time and captured no log, so this is an inference, not a proof. The bare IP could not be tested because the
-dev server answers 404 to a bare-IP Host (`curl`), so the answer to "does the IP work instead" is: not against this
-instance. Re-check with `log stream` on a device.
+`NSAllowsLocalNetworking` exempts local names (`.local`, unqualified hostnames) and IP addresses. A nip.io name is an
+ordinary DNS name and needs HTTPS or an `NSExceptionDomains` entry.
+
+**Caveat:** I changed signing and ATS at the same time and captured no log, so this is an inference, not a proof. The
+bare IP could not be tested because the dev server answers 404 to a bare-IP Host (`curl`). So the IP does not work
+against this instance. Re-check with `log stream` on a device.
 
 ## Defects
 
@@ -98,7 +101,7 @@ instance. Re-check with `log stream` on a device.
 
 ## NOT RUN (device-only, never claimed)
 
-Real HealthKit authorization sheet on a device, real dose payloads from the Medications app on a device, background
+Real HealthKit authorization sheet on a device. Real dose payloads from the Medications app on a device. Background
 delivery (`HKObserverQuery`/background wake), local and critical notifications, the live camera scanner, a real
 iPhone's Keychain, an actual 403 reached through the UI, an empty-stock state, VoiceOver spoken output, iPhone SE
 layout, physical rotation. The Medications evidence above is **simulator Health** (Medications and a logged dose
