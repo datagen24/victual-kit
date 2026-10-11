@@ -136,14 +136,21 @@ extension StockLogRow {
 
 /// What kind of booking wrote a stock log row.
 ///
-/// The wire spellings are the API's own; `transfer` and `open` are not among
-/// them, because the server records a transfer as a consumption plus a purchase
-/// and an opening as ``productOpened``.
+/// The wire spellings are the API's own, including the underscore in the two
+/// transfer kinds. A transfer writes a ``transferFrom`` row and a ``transferTo``
+/// row under one transaction; an opening is ``productOpened``.
 public enum StockTransactionKind: String, Hashable, Sendable, CaseIterable, Codable {
     case purchase = "purchase"
     case consume = "consume"
     case inventoryCorrection = "inventory-correction"
     case productOpened = "product-opened"
+    case selfProduction = "self-production"
+    case stockEditNew = "stock-edit-new"
+    case stockEditOld = "stock-edit-old"
+    case stockMeasuredNew = "stock-measured-new"
+    case stockMeasuredOld = "stock-measured-old"
+    case transferFrom = "transfer_from"
+    case transferTo = "transfer_to"
 
     public var title: String {
         switch self {
@@ -151,6 +158,13 @@ public enum StockTransactionKind: String, Hashable, Sendable, CaseIterable, Coda
         case .consume: "Consume"
         case .inventoryCorrection: "Inventory correction"
         case .productOpened: "Opened"
+        case .selfProduction: "Self-production"
+        case .stockEditNew: "Edited (new)"
+        case .stockEditOld: "Edited (old)"
+        case .stockMeasuredNew: "Measured (new)"
+        case .stockMeasuredOld: "Measured (old)"
+        case .transferFrom: "Moved out"
+        case .transferTo: "Moved in"
         }
     }
 }
@@ -162,6 +176,13 @@ extension StockTransactionKind {
         case .consume: self = .consume
         case .inventoryCorrection: self = .inventoryCorrection
         case .productOpened: self = .productOpened
+        case .selfProduction: self = .selfProduction
+        case .stockEditNew: self = .stockEditNew
+        case .stockEditOld: self = .stockEditOld
+        case .stockMeasuredNew: self = .stockMeasuredNew
+        case .stockMeasuredOld: self = .stockMeasuredOld
+        case .transferFrom: self = .transferFrom
+        case .transferTo: self = .transferTo
         }
     }
 
@@ -171,6 +192,13 @@ extension StockTransactionKind {
         case .consume: .consume
         case .inventoryCorrection: .inventoryCorrection
         case .productOpened: .productOpened
+        case .selfProduction: .selfProduction
+        case .stockEditNew: .stockEditNew
+        case .stockEditOld: .stockEditOld
+        case .stockMeasuredNew: .stockMeasuredNew
+        case .stockMeasuredOld: .stockMeasuredOld
+        case .transferFrom: .transferFrom
+        case .transferTo: .transferTo
         }
     }
 }
