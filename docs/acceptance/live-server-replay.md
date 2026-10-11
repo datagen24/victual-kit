@@ -104,6 +104,32 @@ Result: **28 pass, 0 fail.** Both actors are `ADMIN`, as before.
 
 My separate probes also agree. Twelve simultaneous identical `PUT` requests give one 201 and eleven 200 responses, with stock down by one. Reusing a manual `request_id` on another recipe now answers 409 `request_id_conflict` and books nothing.
 
+## Run 5: refill fixtures on Victual 0.4.0
+
+The server also ships refill fixtures (`tests/fixtures/consumption-refill/`, last changed at `d62efe98`, 11 files). The runner builds each fixture's recipes, owners and shares, replays the steps over HTTP, and sends each read with its own `as_of`, as the fixtures do. Only the stock check is absent, because these fixtures have none.
+
+Result: **9 pass, 0 fail, 2 blocked.**
+
+| Fixture | What it shows | Result | Steps |
+| --- | --- | --- | --- |
+| 01 | A 30-day fill: the estimate is 16 days after the fill, with its warning and due days | pass | 7 |
+| 02 | A 90-day fill: 76 days after the fill, and the boundaries around the warning and reorder d | pass | 11 |
+| 03 | Explicit date, then the medication-specific rule, then the fallback | pass | 9 |
+| 04 | A short or unknown supply gives an unknown estimate, never an invented date | pass | 11 |
+| 05 | An order changes the status; receiving it records the fill and closes the order | pass | 7 |
+| 06 | Cancelling an order restores the status the fills and rules say | pass | 4 |
+| 07 | Voiding and re-recording an identical fill keeps the notice key; a changed date makes a ne | pass | 9 |
+| 08 | A newer fill ends an explicit date for good; voiding the newer fill does not bring it back | pass | 4 |
+| 09 | Notices: approaching, then due; per-user acknowledgement; an open order raises none | blocked | 0 |
+| 10 | The client's calendar date decides the status; without one the server says it used the UTC | pass | 7 |
+| 11 | Refill data follows the recipe's shares; a hidden recipe is absent, not forbidden | blocked | 0 |
+
+Fixtures 09 and 11 name a third user (`carol`) and no API key for that user was available. They stay open. Fixture 11, access that follows the recipe, is also the one that depends on the fixture's non-admin users, since the fixture README gives every user but `alice` only `STOCK_VIEW`. Run with admin keys it could not show a refusal, so it needs non-admin users with their own keys.
+
+The refill list and notices cover every recipe a user owns on the shared instance. The runner keeps only the recipes of the fixture being run, so earlier fixtures and earlier runs do not change the counts.
+
+These rows show the server's answers, including provenance, the approaching and due boundaries, corrected fills with the same and a changed notice key, and the client's `as_of` date. They say nothing about a client reading the notices, scheduling a local notification, or opening the right screen.
+
 ## Findings
 
 Findings 1, 2 and 4 are resolved in 0.4.0, see Run 4. Finding 4 was resolved by documenting the behavior, not by restoring one line.

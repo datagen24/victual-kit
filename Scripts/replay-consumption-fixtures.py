@@ -106,6 +106,7 @@ class World:
         self.products: dict[str, int] = {}
         self.saved: dict[str, object] = {}
         self.users: dict[str, tuple[int, str]] = {}
+        self.recipes: dict[str, int] = {}
 
     def lookup(self, token: str):
         kind, _, rest = token.partition(".")
@@ -117,6 +118,8 @@ class World:
             return self.locations[rest]
         if kind == "saved":
             return self.saved[rest]
+        if kind == "recipe":
+            return self.recipes[rest]
         if kind in ("user", "username"):
             identity = self.users[rest]
             return identity[0] if kind == "user" else identity[1]
@@ -164,6 +167,9 @@ def subset(expected, actual, where="") -> list[str]:
     """Differences, per the fixtures' README: objects match on listed keys, lists element-wise."""
     if expected == "{{any}}":
         return [] if actual is not None else [f"{where or '/'}: expected a value, got none"]
+    if isinstance(expected, dict) and isinstance(actual, list) and expected and all(k.isdigit() for k in expected):
+        # The refill fixtures write "the first element" as an object with the key "0".
+        expected = [expected[str(i)] if str(i) in expected else "{{any}}" for i in range(max(map(int, expected)) + 1)]
     if isinstance(expected, dict):
         if not isinstance(actual, dict):
             return [f"{where or '/'}: expected object, got {type(actual).__name__}"]
@@ -231,6 +237,39 @@ def build_world(client: Client, fixture: dict, prefix: str, start: dt.datetime) 
     return world
 
 
+def build_recipes(client: Client, fixture: dict, world: World, prefix: str) -> None:
+    """Refill fixtures: consumption recipes with an owner and shares, on one throwaway product."""
+    recipes = fixture["setup"].get("recipes", {})
+    if not recipes:
+        return
+    location = client.call("alice", "POST", "/api/objects/locations", {"name": f"{prefix}-loc"})[1]["created_object_id"]
+    status, body = client.call(
+        "alice",
+        "POST",
+        "/api/objects/products",
+        {"name": f"{prefix}-seed", "location_id": location, "qu_id_stock": UNIT_ID,
+         "qu_id_purchase": UNIT_ID, "qu_id_consume": UNIT_ID, "qu_id_price": UNIT_ID},
+    )
+    if status != 200:
+        raise RuntimeError(f"seed recipe product: {status} {body}")
+    product = body["created_object_id"]
+    for name, spec in recipes.items():
+        owner = spec.get("owner", "alice")
+        status, made = client.call(
+            owner, "POST", "/api/consumption/recipes",
+            {"name": f"{prefix}-{name}", "lines": [{"product_id": product, "amount": 1, "qu_id": UNIT_ID}]},
+        )
+        if status != 200:
+            raise RuntimeError(f"seed recipe {name}: {status} {made}")
+        world.recipes[name] = made["created_object_id"]
+        for sharee, rights in spec.get("shares", {}).items():
+            status, shared = client.call(
+                owner, "PUT", f"/api/consumption/recipes/{world.recipes[name]}/shares/{world.users[sharee][0]}", rights
+            )
+            if status not in (200, 201):
+                raise RuntimeError(f"seed share {name}->{sharee}: {status} {shared}")
+
+
 def read_stock(client: Client, world: World, name: str) -> float:
     key, _, location = name.partition("@")
     product = world.products[key]
@@ -271,6 +310,7 @@ def run_fixture(client: Client, path: Path, run: str) -> dict:
         if who_status != 200 or not who:
             raise RuntimeError(f"cannot identify actor '{actor}': {who_status}")
         world.users[actor] = (who[0]["id"], who[0]["username"])
+    build_recipes(client, fixture, world, f"rp{run}-{number}")
     failed = False
     for index, step in enumerate(fixture["steps"], start=1):
         actor = step.get("as", "alice")
@@ -278,8 +318,15 @@ def run_fixture(client: Client, path: Path, run: str) -> dict:
         status, body = client.call(actor, request["method"], request["path"], request.get("body"))
         # The event inbox lists everything the user owns on this instance, including earlier
         # fixtures and runs. Keep only this fixture's events so list expectations stay meaningful.
-        if request["method"] == "GET" and request["path"].split("?")[0] == "/api/consumption/events" and isinstance(body, list):
+        route = request["path"].split("?")[0]
+        if request["method"] == "GET" and route == "/api/consumption/events" and isinstance(body, list):
             body = [e for e in body if e.get("source_system") == source]
+        # The same holds for the refill list and notices: keep only this fixture's recipes.
+        if request["method"] == "GET" and route in ("/api/refills", "/api/refills/notices") and isinstance(body, dict):
+            mine = set(world.recipes.values())
+            for field in ("refills", "notices"):
+                if isinstance(body.get(field), list):
+                    body = {**body, field: [e for e in body[field] if e.get("recipe_id") in mine]}
         problems: list[str] = []
         expect = world.substitute(step["expect"])
         if status != expect["status"]:
