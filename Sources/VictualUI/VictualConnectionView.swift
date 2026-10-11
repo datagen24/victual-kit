@@ -60,7 +60,7 @@ public struct VictualConnectionView: View {
     /// pasting both append. The button empties it.
     private var apiKeyField: some View {
         HStack {
-            SecureField("API key", text: $session.apiKeyText)
+            keyField
                 .disabled(session.state.isConnecting)
             if !session.apiKeyText.isEmpty && !session.state.isConnecting {
                 Button {
@@ -72,6 +72,23 @@ public struct VictualConnectionView: View {
                 .accessibilityLabel("Clear API key")
             }
         }
+    }
+
+    /// A standard secure field.
+    ///
+    /// iOS may offer to save what is typed here as a password. That is left
+    /// in place: content types and showing the field only while typing did not
+    /// stop it in the simulator, and whether a device offers it is unchecked.
+    @ViewBuilder
+    private var keyField: some View {
+        let field = SecureField("API key", text: $session.apiKeyText)
+        #if os(iOS) || os(visionOS)
+            field
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        #else
+            field.autocorrectionDisabled()
+        #endif
     }
 
     @ViewBuilder
