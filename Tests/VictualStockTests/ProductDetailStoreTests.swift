@@ -60,6 +60,7 @@ struct ProductDetailStoreTests {
 
         #expect(store.detail?.displayedStockAmount == 5)
         #expect(store.detail?.displayedStockAmountOpened == 1)
+        #expect(store.detail?.hasChildStock == true)
         // An inventory counts the product's own stock, not its children's.
         #expect(store.detail?.stockAmount == 0)
     }

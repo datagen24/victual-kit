@@ -90,7 +90,19 @@ struct ProductPanel: View {
                     fact("Where", location.path ?? location.displayName)
                 }
             } else {
-                fact("In stock", stockText)
+                if detail.hasChildStock {
+                    fact("This product", stockText(detail.stockAmount, opened: detail.stockAmountOpened), stackedLabel: true)
+                    fact(
+                        "Including child products",
+                        stockText(detail.displayedStockAmount, opened: detail.displayedStockAmountOpened),
+                        stackedLabel: true
+                    )
+                    Text("Child products' stock counts in the total. It is used from here only when sub-product substitution is allowed.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    fact("In stock", stockText(detail.displayedStockAmount, opened: detail.displayedStockAmountOpened))
+                }
                 if let due = detail.nextDueDate { dueFact(due) }
                 if let location = detail.location {
                     fact("Where", location.path ?? location.displayName)
@@ -100,16 +112,16 @@ struct ProductPanel: View {
         .font(.subheadline)
     }
 
-    private var stockText: String {
-        var text = QuantityUnit.describe(detail.displayedStockAmount, in: unit)
-        if detail.displayedStockAmountOpened > 0 {
-            text += ", \(QuantityUnit.describe(detail.displayedStockAmountOpened, in: unit)) opened"
+    private func stockText(_ amount: Double, opened: Double) -> String {
+        var text = QuantityUnit.describe(amount, in: unit)
+        if opened > 0 {
+            text += ", \(QuantityUnit.describe(opened, in: unit)) opened"
         }
         return text
     }
 
-    private func fact(_ label: String, _ value: String) -> some View {
-        factRow(label) { Text(value).monospacedDigit() }
+    private func fact(_ label: String, _ value: String, stackedLabel: Bool = false) -> some View {
+        factRow(label, stackedLabel: stackedLabel) { Text(value).monospacedDigit() }
     }
 
     private func dueFact(_ due: Date) -> some View {
@@ -124,9 +136,11 @@ struct ProductPanel: View {
     /// text leaves no room for a label column.
     private func factRow<Value: View>(
         _ label: String,
+        stackedLabel: Bool = false,
         @ViewBuilder value: () -> Value
     ) -> some View {
-        let layout = stacked
+        // A long label ("Including child products") has no room in the label column.
+        let layout = stacked || stackedLabel
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
         return layout {
@@ -134,7 +148,7 @@ struct ProductPanel: View {
             Text(label)
                 .font(stacked ? .footnote : nil)
                 .foregroundStyle(.secondary)
-                .frame(width: stacked ? nil : 72, alignment: .leading)
+                .frame(width: stacked || stackedLabel ? nil : 72, alignment: .leading)
             value()
                 .fixedSize(horizontal: false, vertical: true)
         }
