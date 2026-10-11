@@ -144,7 +144,7 @@ struct ProductPanel: View {
 
             Menu {
                 ForEach(StockAction.allCases) { action in
-                    Button(menuTitle(action)) {
+                    Button(menuTitle(action) + (gate.shortReason(action).map { " (\($0))" } ?? "")) {
                         workspace.beginBooking(action, product: detail, entry: entry)
                     }
                     .disabled(!gate.canWrite(action))
@@ -181,9 +181,17 @@ struct ProductPanel: View {
         return detail.stockAmount > 0 || detail.hasChildProducts
     }
 
-    /// The first reason a one-tap booking is unavailable, in a sentence.
+    /// The first reason a booking is unavailable, in a sentence.
+    ///
+    /// A key that may use and open but not add, count or move still gets its
+    /// greyed More rows explained, since a menu row has no room for a tooltip.
     private var obstacle: String? {
         if let reason = gate.reason(.consume) ?? gate.reason(.open) { return reason }
+        let blocked = StockAction.allCases.filter { !gate.canWrite($0) }
+        if !blocked.isEmpty {
+            let names = blocked.map { "\(menuTitle($0).replacingOccurrences(of: "…", with: ""))" }
+            return "\(names.joined(separator: ", ")) are greyed out in More: this account lacks the permission for each."
+        }
         if entry == nil, detail.stockAmount <= 0, !detail.hasChildProducts {
             return "None in stock. Use More to add some."
         }

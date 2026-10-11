@@ -21,7 +21,7 @@ struct RouteTable: Sendable {
     var locationEntries = "[]"
     var changedTime = #"{"changed_time":"2026-09-21 09:00:00"}"#
     var booking = #"[{"id":1,"product_id":7,"amount":-1,"transaction_id":"tx-1","transaction_type":"consume"}]"#
-    var capabilities = #"{"key_type":"default","read_only":false,"permissions":["STOCK_VIEW","STOCK_CONSUME","STOCK_PURCHASE","STOCK_OPEN","STOCK_INVENTORY","STOCK_TRANSFER","STOCK_PRICES_VIEW"]}"#
+    var capabilities = #"{"key_type":"default","read_only":false,"permissions":["STOCK_VIEW","STOCK_CONSUME","STOCK_PURCHASE","STOCK_OPEN","STOCK_INVENTORY","STOCK_TRANSFER","STOCK_EDIT","STOCK_PRICES_VIEW"]}"#
 
     /// Routes that should answer a status other than 200.
     var failures: [String: Int] = [:]

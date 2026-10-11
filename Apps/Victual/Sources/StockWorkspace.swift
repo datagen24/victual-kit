@@ -29,8 +29,9 @@ final class StockWorkspace {
     init(client: VictualClient) {
         self.stock = StockStore(client: client)
         self.detail = ProductDetailStore(client: client)
-        self.bookings = BookingController(client: client)
-        self.capabilities = CapabilityGate(client: client)
+        let capabilities = CapabilityGate(client: client)
+        self.bookings = BookingController(client: client, gate: capabilities)
+        self.capabilities = capabilities
         self.poller = ChangePoller(client: client)
     }
 

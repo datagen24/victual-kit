@@ -38,7 +38,7 @@ struct ScanScreen: View {
                 }
             }
             .animation(.snappy, value: scanner.phase)
-            .animation(.snappy, value: workspace.bookings.canUndoLast)
+            .animation(.snappy, value: workspace.bookings.hasConfirmableBooking)
             .navigationTitle("Scan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
