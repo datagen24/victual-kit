@@ -149,6 +149,7 @@ struct ProductPanel: View {
                 Task { await workspace.bookOne(.consume, of: detail, entry: entry) }
             } label: {
                 Label("Use one", systemImage: "minus.circle.fill")
+                    .labelStyle(PanelLabelStyle(titleOnly: stacked))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -158,6 +159,7 @@ struct ProductPanel: View {
                 Task { await workspace.bookOne(.open, of: detail, entry: entry) }
             } label: {
                 Label("Open one", systemImage: "seal")
+                    .labelStyle(PanelLabelStyle(titleOnly: stacked))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -222,5 +224,18 @@ struct ProductPanel: View {
             return "None in stock. Use More to add some."
         }
         return nil
+    }
+}
+
+/// A label that drops its icon when large text leaves no room for both.
+private struct PanelLabelStyle: LabelStyle {
+    let titleOnly: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if titleOnly {
+            configuration.title
+        } else {
+            Label(configuration)
+        }
     }
 }
