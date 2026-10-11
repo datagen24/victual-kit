@@ -14,7 +14,7 @@ The script writes to the instance. Point it at a throwaway one.
 
 | Item | Value |
 | --- | --- |
-| Date | 2026-10-10 |
+| Date | 2026-10-10 (runs 1 to 3), 2026-10-11 (run 4) |
 | Server | Victual 0.3.2 (release date 2026-10-08), PostgreSQL 16, database version 307 |
 | Server identity | `/api/system/info` reports no commit, so the served OpenAPI document identifies the build |
 | Served spec sha256 | `8f2f619a8383a52583ab8c596761a4e2592d6877b5c62eaf2b9a73796084827f` |
@@ -63,7 +63,50 @@ Fixtures 16 and 17 need a second user with an API key of their own. The API has 
 
 Both actors are `ADMIN`. The two rows therefore show the sharing and isolation behavior for admins and do not show that a narrower role is refused.
 
+## Run 4: Victual 0.4.0
+
+The instance was then upgraded to the `v0.4.0` release (tag commit `f73d2bec`, `/api/system/info` release date 2026-10-10, database version 307). The server's fixtures were taken from that tag, which has 28 files: the 26 above plus `18-manual-request-conflict.json` and `19-correction-split-lines.json`. The test data on the instance was kept.
+
+The served OpenAPI document has the same paths as the spec vendored from the tag, and differs only in the five runtime `ExposedEntity_*` enums. Its sha256 is `0f171a90b4e5e73066aeac1dc0f79b6efc1cb6110fe879a6aa33411bdaeeea0a`. The vendored spec is upstream `89cea94`, sha256 `e0b8cc5de387a97e160afb8be770a7aaa90662cea467b208467562ef08905442`.
+
+Result: **28 pass, 0 fail.** Both actors are `ADMIN`, as before.
+
+| Fixture | ADR row | Result | Steps |
+| --- | --- | --- | --- |
+| 00 | appendix (no table row) | pass | 1 |
+| 01 | 1 | pass | 3 |
+| 02 | 2 | pass | 4 |
+| 03 | 3 (sequential repeat) | pass | 4 |
+| 04 | 4 | pass | 4 |
+| 05 | 5 | pass | 4 |
+| 06 | 6 | pass | 5 |
+| 07a | 7 (delete then create) | pass | 4 |
+| 07b | 7 (create then delete) | pass | 5 |
+| 08 | 8 | pass | 7 |
+| 09 | 9 | pass | 7 |
+| 09a | 9a | pass | 7 |
+| 09b | 9b | pass | 10 |
+| 09c | 9c | pass | 6 |
+| 09d | 9d | pass | 6 |
+| 09e | 9e | pass | 8 |
+| 09f | 9f | pass | 12 |
+| 09g | 9g | pass | 11 |
+| 10 | 10 | pass | 7 |
+| 11 | 11 | pass | 7 |
+| 12 | 12 | pass | 7 |
+| 13 | 13 | pass | 5 |
+| 14 | 14 | pass | 5 |
+| 15 | 15 | pass | 6 |
+| 16 | 16 | pass | 7 |
+| 17 | 17 | pass | 10 |
+| 18 | manual-idempotency | pass | 5 |
+| 19 | 6-split-lines | pass | 4 |
+
+My separate probes also agree. Twelve simultaneous identical `PUT` requests give one 201 and eleven 200 responses, with stock down by one. Reusing a manual `request_id` on another recipe now answers 409 `request_id_conflict` and books nothing.
+
 ## Findings
+
+Findings 1, 2 and 4 are resolved in 0.4.0, see Run 4. Finding 4 was resolved by documenting the behavior, not by restoring one line.
 
 1. **`DELETE` ignores a JSON body on this instance** ([victual#760](https://github.com/datagen24/victual/issues/760)). Fixture 09a, step 7, sends `{"reason": "medication_archived"}` as a JSON body. The instance treated it as an unknown reason and answered `needs_review` / `source_deleted`, with `source_removed_reason` of `unknown`. The same reason sent as a query parameter (`?reason=medication_archived`) works and leaves the event `booked`. The failure is safe, since stock is untouched and a person decides. I reproduced it with a plain request and with a charset in the content type. The server's own in-process test passes, so a proxy or the deployment may drop the body. The victual-kit client sends the reason as a query parameter and is not affected.
 2. **A reused manual `request_id` replays another recipe's event** ([victual#761](https://github.com/datagen24/victual/issues/761)). Consuming recipe A and then recipe B with the same `request_id` answered 200 with `replayed: true` for recipe A's event. Nothing was booked for B, and no error says so. Fixtures 12 and 13 reuse one id, which is how it showed. The client generates a fresh UUID per request, so the risk is low. A 409 would be safer.
@@ -75,6 +118,7 @@ Both actors are `ADMIN`. The two rows therefore show the sharing and isolation b
 
 - A second user without `ADMIN`. Rows 16 and 17 ran with two admins.
 - Whether the patch itself is correct. The run only shows what changed in the fixtures' answers.
+- A client that counts `lines`. On 0.4.0 the server documents `lines` as stock-log allocations, one per entry, so a correction can list several lines for one product. victual-kit only decodes `lines` and does not count them.
 - Anything a device produces: real payload fields, identifier behavior on edit, late delivery, revocation.
 - The refill routes. The instance has no refill data, and the fixtures do not cover them.
 - Bulk-resolution behavior beyond what fixtures 09f and 09g check.
