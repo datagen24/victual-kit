@@ -29,7 +29,7 @@ struct SetupWizard: View {
         NavigationStack {
             Group {
                 if !started {
-                    IntroPage(webURL: webURL, count: setup.unsettled.count) {
+                    IntroPage(webURL: webURL, count: setup.unsettled.count, sharedCount: setup.active.count) {
                         queue = setup.unsettled.map(\.id)
                         started = true
                     }
@@ -57,14 +57,26 @@ struct SetupWizard: View {
 private struct IntroPage: View {
     let webURL: URL?
     let count: Int
+    /// How many medications Health has shared with the app, settled or not.
+    let sharedCount: Int
     let begin: () -> Void
+
+    /// Three different situations, which "nothing to do" used to blur: nothing
+    /// shared yet, everything shared already settled, and some still open.
+    private var introText: String {
+        if sharedCount == 0 {
+            return "Nothing has been shared from Health yet. Choose medications on the Medications screen to share some, then come back."
+        }
+        if count == 0 {
+            return "Every medication you share is already settled. You can run this again after sharing more in Health."
+        }
+        return "\(count) medication\(count == 1 ? "" : "s") shared from Health still need a decision."
+    }
 
     var body: some View {
         Form {
             Section {
-                Text(count == 0
-                    ? "Every medication you share is already settled. You can run this again after sharing more in Health."
-                    : "\(count) medication\(count == 1 ? "" : "s") shared from Health still need a decision.")
+                Text(introText)
             }
             Section("Before you map anything") {
                 Text("In Victual's web UI, create a product for each medication, with its stock quantity unit.")

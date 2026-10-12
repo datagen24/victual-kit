@@ -127,7 +127,7 @@ private struct DueCell: View {
     var body: some View {
         if let date {
             Text(date, format: .dateTime.year().month(.abbreviated).day())
-                .foregroundStyle(date < Date() ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
+                .foregroundStyle(date < Calendar.current.startOfDay(for: Date()) ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
                 .monospacedDigit()
         } else {
             // No due date recorded, which is not the same as "due today".
