@@ -43,6 +43,27 @@ struct ProductDetailStoreTests {
         #expect(store.entries.count == 3)
     }
 
+    @Test("A parent product shows its sub-products' stock, but books against its own")
+    func parentShowsAggregate() async {
+        var parent = table
+        parent.productDetail = """
+            {"product": {"id": 7, "name": "Pasta", "qu_id_stock": 3},
+             "stock_amount": 0, "stock_amount_opened": 0,
+             "stock_amount_aggregated": 5, "stock_amount_opened_aggregated": 1,
+             "is_aggregated_amount": true, "has_childs": true}
+            """
+        let (client, _) = testClient(parent)
+        let store = ProductDetailStore(client: client)
+
+        store.select(7)
+        await store.waitForLoad()
+
+        #expect(store.detail?.displayedStockAmount == 5)
+        #expect(store.detail?.displayedStockAmountOpened == 1)
+        // An inventory counts the product's own stock, not its children's.
+        #expect(store.detail?.stockAmount == 0)
+    }
+
     @Test("Lots read soonest due first, with undated ones last")
     func ordersEntriesByDueDate() async {
         let (client, _) = testClient(table)

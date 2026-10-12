@@ -165,7 +165,9 @@ struct BookingSheet: View {
 
     private var footer: some View {
         HStack {
-            Text(productName).foregroundStyle(.secondary).lineLimit(1)
+            Text(draft.problem ?? productName)
+                .foregroundStyle(draft.problem == nil ? .secondary : Color.red)
+                .lineLimit(1)
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
                 .keyboardShortcut(.cancelAction)

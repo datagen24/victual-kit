@@ -44,7 +44,9 @@ struct BookingForm: View {
                         )
                     }
                 } footer: {
-                    if action == .inventory {
+                    if let problem = draft.problem {
+                        Text(problem).foregroundStyle(.red)
+                    } else if action == .inventory {
                         Text("What is actually there. The server adds or removes the difference.")
                     } else if draft.stockEntryID != nil {
                         Text("One specific container, booked one at a time.")

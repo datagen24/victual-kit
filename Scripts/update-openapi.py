@@ -333,6 +333,50 @@ def widen_transaction_types(document: dict) -> list[str]:
     return added
 
 
+def embed_product_in_missing_products(document: dict) -> bool:
+    """Documents the `product` the server embeds in each below-minimum entry.
+
+    `GET /stock/volatile` sends each `missing_products` entry with its full
+    product, as `GET /stock` does, but the document lists only four fields. The
+    product carries the stock unit, which is what lets a product with no stock
+    row at all be shown with its unit. Same schema `GET /stock` already uses.
+    """
+    schemas = document.get("components", {}).get("schemas", {})
+    items = (
+        schemas.get("CurrentVolatilStockResponse", {})
+        .get("properties", {})
+        .get("missing_products", {})
+        .get("items")
+    )
+    if not isinstance(items, dict) or "product" in items.get("properties", {}):
+        return False
+    items.setdefault("properties", {})["product"] = {
+        "$ref": "#/components/schemas/ProductWithoutUserfields"
+    }
+    return True
+
+
+def add_aggregated_product_amounts(document: dict) -> list[str]:
+    """Documents the aggregated amounts `GET /stock/products/{id}` sends.
+
+    A parent product reports its own stock in `stock_amount` and its own plus
+    its sub-products' in `stock_amount_aggregated`; the document lists only the
+    first, though the server fills both (confirmed against a live 0.4.0
+    instance). Without them a parent reads `0` on its detail screen while its
+    sub-products hold stock.
+    """
+    schema = document.get("components", {}).get("schemas", {}).get("ProductDetailsResponse")
+    if not isinstance(schema, dict):
+        return []
+    properties = schema.setdefault("properties", {})
+    added = []
+    for name in ("stock_amount_aggregated", "stock_amount_opened_aggregated"):
+        if name not in properties:
+            properties[name] = {"type": "number"}
+            added.append(name)
+    return added
+
+
 def lint(document: dict) -> list[str]:
     """Report upstream modelling mistakes that are left in place deliberately.
 
@@ -374,6 +418,8 @@ def normalize(raw: bytes, overrides: dict[str, str]) -> tuple[dict, dict]:
     report["danglingRefsRepaired"] = repaired
     report["integerFlagsRetyped"] = retype_integer_flags(document)
     report["transactionTypesAdded"] = widen_transaction_types(document)
+    report["aggregatedProductAmountsAdded"] = add_aggregated_product_amounts(document)
+    report["missingProductsEmbedProduct"] = embed_product_in_missing_products(document)
 
     document["servers"] = [{"url": SERVER_URL, "description": SERVER_DESCRIPTION}]
     report["serverPlaceholderReplaced"] = True

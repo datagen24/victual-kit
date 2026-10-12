@@ -80,9 +80,10 @@ struct BookingDraftTests {
     func lotIgnoredForPurchaseAndInventory() {
         let entry = StockEntry(id: 77, stockID: "lot-77", productID: 7, locationID: 5, amount: 1)
 
-        let inventory = BookingDraft(action: .inventory, entry: entry, product: product)
+        var inventory = BookingDraft(action: .inventory, entry: entry, product: product)
         #expect(inventory.stockEntryID == nil)
         #expect(inventory.amount == 4)
+        inventory.amount = 5
         #expect(inventory.isValid)
 
         var purchase = BookingDraft(action: .purchase, entry: entry, product: product)
@@ -134,5 +135,53 @@ struct BookingDraftTests {
         draft.note = "   "
         guard case .purchase(_, _, _, _, _, _, _, let note) = draft.request else { return }
         #expect(note == nil)
+    }
+
+    @Test("An inventory that changes nothing is caught before the server refuses it")
+    func unchangedInventory() {
+        var draft = BookingDraft(action: .inventory, productID: 7, product: product)
+
+        #expect(!draft.isValid)
+        #expect(draft.problem == "That is the amount already in stock.")
+
+        draft.amount = 3
+        #expect(draft.isValid)
+        draft.amount = 0
+        #expect(draft.isValid)
+    }
+
+    @Test("A negative price is refused, and ignored when no price is recorded")
+    func negativePrice() {
+        var draft = BookingDraft(action: .purchase, productID: 7, product: product)
+        draft.price = -1
+
+        #expect(draft.isValid)
+        draft.usesPrice = true
+        #expect(!draft.isValid)
+        #expect(draft.problem == "A price cannot be negative.")
+        draft.price = 0
+        #expect(draft.isValid)
+    }
+
+    @Test("A tiny amount is refused", arguments: [StockAction.consume, .purchase, .open])
+    func tinyAmount(action: StockAction) {
+        var draft = BookingDraft(action: action, productID: 7, product: product)
+        draft.amount = 0.0004
+
+        #expect(!draft.isValid)
+        draft.amount = 0.001
+        #expect(draft.isValid)
+    }
+
+    @Test("A transfer missing a location is incomplete without being wrong")
+    func incompleteTransfer() {
+        var draft = BookingDraft(action: .transfer, productID: 7, product: product)
+
+        #expect(!draft.isValid)
+        #expect(draft.problem == nil)
+        draft.destinationID = 2
+        #expect(draft.problem == "Choose two different locations.")
+        draft.destinationID = 9
+        #expect(draft.isValid)
     }
 }

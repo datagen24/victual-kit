@@ -106,6 +106,82 @@ struct StockStoreTests {
         #expect(row?.amountMissing == 4)
     }
 
+    @Test("A below-minimum row shows what is on hand, with its unit")
+    func belowMinimumShowsOnHand() async {
+        let (client, _) = testClient(populated)
+        let store = StockStore(client: client)
+        await store.refresh()
+
+        store.scope = .status(.belowMinimum)
+
+        let row = store.rows.first
+        #expect(row?.amount == 1)
+        #expect(row?.amountText == "1 g")
+    }
+
+    @Test("A below-minimum product with no stock row keeps its unit from the embedded product")
+    func belowMinimumWithoutStockRow() async {
+        var table = populated
+        table.volatile = """
+            {"due_products": [], "overdue_products": [], "expired_products": [],
+             "missing_products": [{"id": 12, "name": "Salt", "amount_missing": 2,
+                "is_partly_in_stock": 0,
+                "product": {"id": 12, "name": "Salt", "qu_id_stock": 3}}]}
+            """
+        let (client, _) = testClient(table)
+        let store = StockStore(client: client)
+        await store.refresh()
+
+        store.scope = .status(.belowMinimum)
+
+        let row = store.rows.first
+        #expect(row?.amount == 0)
+        #expect(row?.amountText == "0 Packs")
+    }
+
+    @Test("The plain list marks a product that is below its minimum")
+    func allListShowsShortfall() async {
+        let (client, _) = testClient(populated)
+        let store = StockStore(client: client)
+        await store.refresh()
+
+        let almonds = store.rows.first { $0.name == "Almonds" }
+        let cookies = store.rows.first { $0.name == "Cookies" }
+        #expect(almonds?.amountMissing == 4)
+        #expect(cookies?.amountMissing == nil)
+    }
+
+    @Test("A parent product shows its sub-products' stock too")
+    func parentShowsAggregate() async {
+        var table = populated
+        table.stock = """
+            [{"product_id": 7, "amount": 0, "amount_aggregated": 5, "amount_opened": 0,
+              "amount_opened_aggregated": 1, "is_aggregated_amount": true, "value": 0,
+              "product": {"id": 7, "name": "Pasta", "qu_id_stock": 3}}]
+            """
+        let (client, _) = testClient(table)
+        let store = StockStore(client: client)
+        await store.refresh()
+
+        let row = store.rows.first
+        #expect(row?.amount == 5)
+        #expect(row?.amountOpened == 1)
+    }
+
+    @Test("Stock with no recorded price reads as unknown, as a location view does")
+    func unpricedStockIsUnknown() async {
+        var table = populated
+        table.stock = """
+            [{"product_id": 7, "amount": 2, "value": 0,
+              "product": {"id": 7, "name": "Cookies", "qu_id_stock": 3}}]
+            """
+        let (client, _) = testClient(table)
+        let store = StockStore(client: client)
+        await store.refresh()
+
+        #expect(store.rows.first?.value == nil)
+    }
+
     @Test("Search narrows by name, case-insensitively")
     func searchFilters() async {
         let (client, _) = testClient(populated)

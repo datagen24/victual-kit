@@ -172,7 +172,17 @@ public final class StockStore {
     private var unsortedRows: [StockRow] {
         switch scope {
         case .status(.all):
-            return summaries.map { StockRow($0, units: quantityUnits) }
+            // A product below its minimum says so in the plain list too, not
+            // only inside the filter.
+            let missing = Dictionary(
+                volatile.belowMinimum.map { ($0.id, $0.amountMissing) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            return summaries.map {
+                var row = StockRow($0, units: quantityUnits)
+                row.amountMissing = missing[$0.productID]
+                return row
+            }
         case .status(.dueSoon):
             return volatile.due.map { StockRow($0, units: quantityUnits) }
         case .status(.overdue):
@@ -181,11 +191,7 @@ public final class StockStore {
             return volatile.expired.map { StockRow($0, units: quantityUnits) }
         case .status(.belowMinimum):
             return volatile.belowMinimum.map {
-                StockRow(
-                    $0,
-                    units: quantityUnits,
-                    product: summary(for: $0.id)?.product
-                )
+                StockRow($0, units: quantityUnits, stock: summary(for: $0.id))
             }
         case .location:
             return rowsFromLocationEntries()
