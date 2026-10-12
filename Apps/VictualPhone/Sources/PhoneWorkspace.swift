@@ -59,6 +59,7 @@ final class PhoneWorkspace {
     func resume() {
         poller.start { [weak self] in
             await self?.stock.refresh()
+            await self?.capabilities.load()
         }
         // Launch and return to the foreground are the only automatic medication
         // syncs: background delivery waits on the device spike.

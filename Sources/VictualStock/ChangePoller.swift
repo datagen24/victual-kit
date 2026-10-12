@@ -14,8 +14,13 @@ import VictualCore
 ///
 /// Polling is an optimisation, not a feature: if the timestamp cannot be read,
 /// the application still works with manual refresh. So consecutive failures
-/// stop the poller rather than producing an error every interval forever. The
+/// slow the loop down rather than producing an error every interval, and the
 /// last error stays on ``error`` for anyone who wants to show it.
+///
+/// The loop never gives up. A server that restarts, or a laptop that wakes on
+/// another network, comes back without anyone relaunching the application, and
+/// the first successful read after an outage counts as a change so the list is
+/// re-read.
 @MainActor
 @Observable
 public final class ChangePoller {
@@ -38,8 +43,11 @@ public final class ChangePoller {
     /// the time it takes to walk back to the Mac.
     public var interval: Duration = .seconds(30)
 
-    /// How many failures in a row end the loop.
+    /// How many failures in a row start the loop backing off.
     public var failureLimit = 3
+
+    /// The longest the loop waits between polls while the server is unreachable.
+    public var maxBackoff: Duration = .seconds(300)
 
     private let client: VictualClient
     private var task: Task<Void, Never>?
@@ -50,16 +58,19 @@ public final class ChangePoller {
 
     /// Reads the timestamp once.
     ///
-    /// - Returns: Whether it moved since the last read. The first successful
-    ///   read returns `false`: it establishes the baseline rather than reporting
-    ///   a change nobody made.
+    /// - Returns: Whether it moved since the last read, or whether this read
+    ///   follows failed ones, since something may have changed unseen. The first
+    ///   successful read otherwise returns `false`: it establishes the baseline
+    ///   rather than reporting a change nobody made.
     @discardableResult
     public func checkNow() async -> Bool {
         do {
             let changed = try await client.databaseChangedTime()
+            let recovered = consecutiveFailures > 0
             consecutiveFailures = 0
             error = nil
             defer { lastChange = changed }
+            if recovered { return true }
             guard let previous = lastChange else { return false }
             return changed != previous
         } catch {
@@ -83,18 +94,22 @@ public final class ChangePoller {
                 if await self.checkNow() {
                     await onChange()
                 }
-                if self.consecutiveFailures >= self.failureLimit {
-                    self.isPolling = false
-                    return
-                }
-                let interval = self.interval
+                let delay = self.nextDelay()
                 do {
-                    try await Task.sleep(for: interval)
+                    try await Task.sleep(for: delay)
                 } catch {
                     return
                 }
             }
         }
+    }
+
+    /// How long to wait before the next poll: the interval while healthy, then
+    /// doubling for each failure past ``failureLimit``, up to ``maxBackoff``.
+    func nextDelay() -> Duration {
+        guard consecutiveFailures >= failureLimit else { return interval }
+        let doublings = min(consecutiveFailures - failureLimit + 1, 10)
+        return min(interval * (1 << doublings), maxBackoff)
     }
 
     /// Stops polling. Safe to call when nothing is running.

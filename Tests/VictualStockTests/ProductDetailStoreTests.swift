@@ -197,6 +197,41 @@ struct ChangePollerTests {
         #expect(poller.error == nil)
     }
 
+    @Test("The first read after failures counts as a change")
+    func recoveryRefreshes() async {
+        let failing = Toggle()
+        let transport = StubTransport { _, _, _, _ in
+            if failing.isFailing { return (.init(status: .init(code: 500)), .init("{}")) }
+            return (
+                .init(status: .ok, headerFields: [.contentType: "application/json"]),
+                .init(#"{"changed_time":"2026-09-21 09:00:00"}"#)
+            )
+        }
+        let poller = ChangePoller(client: VictualClient.stubbed(transport))
+        failing.isFailing = true
+        await poller.checkNow()
+
+        failing.isFailing = false
+
+        #expect(await poller.checkNow() == true)
+        #expect(await poller.checkNow() == false)
+    }
+
+    @Test("Failures back off instead of ending the loop")
+    func backsOff() async {
+        var table = RouteTable()
+        table.failures = ["/system/db-changed-time": 500]
+        let (client, _) = testClient(table)
+        let poller = ChangePoller(client: client)
+        poller.interval = .seconds(30)
+
+        #expect(poller.nextDelay() == .seconds(30))
+        for _ in 0..<3 { await poller.checkNow() }
+        #expect(poller.nextDelay() == .seconds(60))
+        for _ in 0..<20 { await poller.checkNow() }
+        #expect(poller.nextDelay() == .seconds(300))
+    }
+
     @Test("Stopping an unstarted poller is harmless")
     func stopIsIdempotent() {
         let (client, _) = testClient()

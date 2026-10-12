@@ -139,6 +139,7 @@ public final class BookingController {
             self.error = VictualError.mapping(error)
             lastBooking = nil
             lastAction = nil
+            await refreshPermissionsIfForbidden()
             return false
         }
     }
@@ -163,8 +164,18 @@ public final class BookingController {
             return true
         } catch {
             self.error = VictualError.mapping(error)
+            await refreshPermissionsIfForbidden()
             return false
         }
+    }
+
+    /// Asks the gate to read the key's permissions again after a `403`.
+    ///
+    /// The gate reads them once, so a permission changed on the server since
+    /// then would otherwise go on offering a control the server refuses.
+    private func refreshPermissionsIfForbidden() async {
+        guard error == .forbidden else { return }
+        await gate?.load()
     }
 
     /// Withdraws the undo affordance without undoing anything.
