@@ -26,6 +26,12 @@ struct ProductPanel: View {
     /// Whether the name links to the product screen. Off on that screen.
     var linksToDetail = true
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// At the accessibility sizes a label column and three buttons no longer
+    /// fit side by side; the panel clipped at the left edge. Stack them instead.
+    private var stacked: Bool { typeSize.isAccessibilitySize }
+
     private var gate: CapabilityGate { workspace.capabilities }
     private var unit: QuantityUnit? { detail.stockQuantityUnit }
 
@@ -103,31 +109,60 @@ struct ProductPanel: View {
     }
 
     private func fact(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label).foregroundStyle(.secondary).frame(width: 72, alignment: .leading)
-            Text(value).monospacedDigit()
-        }
-        .accessibilityElement(children: .combine)
+        factRow(label) { Text(value).monospacedDigit() }
     }
 
     private func dueFact(_ due: Date) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Due").foregroundStyle(.secondary).frame(width: 72, alignment: .leading)
+        factRow("Due") {
             Text(due, format: .dateTime.year().month(.abbreviated).day())
                 .foregroundStyle(due < Calendar.current.startOfDay(for: .now) ? .red : .primary)
                 .monospacedDigit()
         }
+    }
+
+    /// A label and its value: side by side, or one above the other when large
+    /// text leaves no room for a label column.
+    private func factRow<Value: View>(
+        _ label: String,
+        @ViewBuilder value: () -> Value
+    ) -> some View {
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+        return layout {
+            // Stacked, the label drops to a caption so the value carries the row.
+            Text(label)
+                .font(stacked ? .footnote : nil)
+                .foregroundStyle(.secondary)
+                .frame(width: stacked ? nil : 72, alignment: .leading)
+            value()
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, stacked ? 4 : 0)
         .accessibilityElement(children: .combine)
     }
 
     // MARK: - What can be done
 
     private var actions: some View {
-        HStack(spacing: 8) {
+        // Titles alone, on one line: an icon beside "Open one" is what truncated
+        // it. At accessibility sizes the buttons stack full width instead.
+        buttons(vertical: stacked)
+            .controlSize(.large)
+            .disabled(workspace.bookings.isWorking)
+    }
+
+    private func buttons(vertical: Bool) -> some View {
+        let layout = vertical
+            ? AnyLayout(VStackLayout(spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
             Button {
                 Task { await workspace.bookOne(.consume, of: detail, entry: entry) }
             } label: {
-                Label("Use one", systemImage: "minus.circle.fill")
+                Text("Use one")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -136,7 +171,9 @@ struct ProductPanel: View {
             Button {
                 Task { await workspace.bookOne(.open, of: detail, entry: entry) }
             } label: {
-                Label("Open one", systemImage: "seal")
+                Text("Open one")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -150,15 +187,17 @@ struct ProductPanel: View {
                     .disabled(!gate.canWrite(action))
                 }
             } label: {
-                Label("More", systemImage: "ellipsis.circle")
-                    .labelStyle(.iconOnly)
-                    .frame(minWidth: 32)
+                if vertical {
+                    Text("More").lineLimit(1).frame(maxWidth: .infinity)
+                } else {
+                    Label("More", systemImage: "ellipsis.circle")
+                        .labelStyle(.iconOnly)
+                        .frame(minWidth: 32)
+                }
             }
             .buttonStyle(.bordered)
             .accessibilityLabel("More bookings")
         }
-        .controlSize(.large)
-        .disabled(workspace.bookings.isWorking)
     }
 
     private func menuTitle(_ action: StockAction) -> String {
