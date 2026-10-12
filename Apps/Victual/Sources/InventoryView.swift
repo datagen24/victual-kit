@@ -52,6 +52,7 @@ struct InventoryView: View {
             // has spare and leaving the table to scroll.
             .navigationSplitViewColumnWidth(min: 280, ideal: 320)
         }
+        .focusedSceneValue(\.stockWorkspace, workspace)
         .task { await workspace.start() }
         .onDisappear { workspace.stop() }
         .onChange(of: sidebarSelection) { _, new in

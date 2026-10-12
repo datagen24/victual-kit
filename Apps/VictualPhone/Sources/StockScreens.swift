@@ -2,13 +2,26 @@ import SwiftUI
 import VictualCore
 import VictualStock
 
-/// The stock list, filtered by the server's own status buckets.
+/// The stock list, filtered by the server's own status buckets or by one location.
 struct StockScreen: View {
     let workspace: PhoneWorkspace
 
-    @State private var filter: StockFilter = .all
+    @State private var choosingLocation = false
 
     private var stock: StockStore { workspace.stock }
+
+    /// The status bucket in view, or `nil` while a location is.
+    private var filter: StockFilter? {
+        if case .status(let filter) = stock.scope { return filter }
+        return nil
+    }
+
+    private var title: String {
+        switch stock.scope {
+        case .status(let filter): filter.title
+        case .location(let id): stock.location(id)?.displayName ?? "Location"
+        }
+    }
 
     var body: some View {
         @Bindable var stock = workspace.stock
@@ -21,7 +34,7 @@ struct StockScreen: View {
             }
             .listStyle(.plain)
             .overlay { if stock.rows.isEmpty { emptyState } }
-            .navigationTitle(filter.title)
+            .navigationTitle(title)
             .searchable(text: $stock.searchText, prompt: "Search stock")
             .refreshable { await stock.refresh() }
             .toolbar {
@@ -36,19 +49,37 @@ struct StockScreen: View {
                 case .location(let target): LocationScreen(workspace: workspace, location: target)
                 }
             }
-            .onChange(of: filter) { _, new in stock.scope = .status(new) }
+            .sheet(isPresented: $choosingLocation) {
+                LocationChooser(stock: stock)
+            }
         }
     }
 
     private var filterMenu: some View {
         Menu {
-            Picker("Show", selection: $filter) {
+            Picker(
+                "Show",
+                selection: Binding(
+                    get: { stock.scope },
+                    set: { stock.scope = $0 }
+                )
+            ) {
                 ForEach(StockFilter.allCases) { filter in
-                    Text("\(filter.title) (\(stock.count(of: filter)))").tag(filter)
+                    Text("\(filter.title) (\(stock.count(of: filter)))")
+                        .tag(StockScope.status(filter))
                 }
             }
+            Button("In a location…", systemImage: "archivebox") { choosingLocation = true }
         } label: {
             Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+        }
+    }
+
+    private var emptyTitle: String {
+        switch stock.scope {
+        case .status(.all): "Nothing in stock"
+        case .status(let filter): "Nothing is \(filter.title.lowercased())"
+        case .location: "Nothing in \(title)"
         }
     }
 
@@ -65,10 +96,52 @@ struct StockScreen: View {
         } else if !stock.searchText.isEmpty {
             ContentUnavailableView.search(text: stock.searchText)
         } else {
-            ContentUnavailableView(
-                filter == .all ? "Nothing in stock" : "Nothing is \(filter.title.lowercased())",
-                systemImage: "shippingbox"
-            )
+            ContentUnavailableView(emptyTitle, systemImage: "shippingbox")
+        }
+    }
+}
+
+/// Picks the location whose stock the list shows.
+///
+/// A sheet with a search field rather than a menu: an instance can have
+/// hundreds of locations, and a menu that long cannot be searched.
+private struct LocationChooser: View {
+    let stock: StockStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
+
+    private var matches: [StorageLocation] {
+        let all = stock.locations.sorted {
+            ($0.path ?? $0.displayName).localizedStandardCompare($1.path ?? $1.displayName)
+                == .orderedAscending
+        }
+        let needle = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return all }
+        return all.filter { ($0.path ?? $0.displayName).localizedCaseInsensitiveContains(needle) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(matches) { location in
+                Button(location.path ?? location.displayName) {
+                    stock.scope = .location(location.id)
+                    dismiss()
+                }
+                .foregroundStyle(.primary)
+            }
+            .searchable(text: $search, prompt: "Search locations")
+            .navigationTitle("Location")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .overlay {
+                if stock.locations.isEmpty {
+                    ContentUnavailableView("No locations", systemImage: "archivebox")
+                }
+            }
         }
     }
 }
