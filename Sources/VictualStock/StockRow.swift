@@ -70,9 +70,11 @@ extension StockRow {
     /// sub-products' in `amount_aggregated`; the aggregate is what a household
     /// means by "how much pasta is there", so it is shown when the server fills it.
     ///
-    /// The server sends a `value` of 0 for stock with no recorded price, which a
-    /// location view renders as unknown. A zero here is shown the same way,
-    /// since 0 and "unpriced" cannot be told apart in this response.
+    /// ``value`` crosses over untouched. `GET /stock` sums a missing price as 0
+    /// (`stock_current.value` is `SUM(IFNULL(price, 0) * amount)`), so a total of
+    /// 0 may mean "free" or "no price recorded", and this response cannot say
+    /// which. Only a stock entry's own `price` can, which is why a location view
+    /// shows a dash for an unpriced entry and this list shows 0.
     init(_ summary: StockSummary, units: [Int: QuantityUnit]) {
         let aggregated = summary.isAggregatedAmount
         self.init(
@@ -81,7 +83,7 @@ extension StockRow {
             amount: (aggregated ? summary.amountAggregated : nil) ?? summary.amount,
             amountOpened: (aggregated ? summary.amountOpenedAggregated : nil)
                 ?? summary.amountOpened,
-            value: summary.value.flatMap { $0 == 0 ? nil : $0 },
+            value: summary.value,
             nextDueDate: summary.nextDueDate,
             unit: summary.product?.stockQuantityUnitID.flatMap { units[$0] },
             product: summary.product

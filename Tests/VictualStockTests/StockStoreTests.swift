@@ -168,18 +168,24 @@ struct StockStoreTests {
         #expect(row?.amountOpened == 1)
     }
 
-    @Test("Stock with no recorded price reads as unknown, as a location view does")
-    func unpricedStockIsUnknown() async {
+    @Test("A zero value stays a zero, and a missing one stays missing")
+    func zeroAndAbsentAreDifferent() async {
         var table = populated
         table.stock = """
             [{"product_id": 7, "amount": 2, "value": 0,
-              "product": {"id": 7, "name": "Cookies", "qu_id_stock": 3}}]
+              "product": {"id": 7, "name": "Cookies", "qu_id_stock": 3}},
+             {"product_id": 9, "amount": 1,
+              "product": {"id": 9, "name": "Almonds", "qu_id_stock": 4}}]
             """
         let (client, _) = testClient(table)
         let store = StockStore(client: client)
         await store.refresh()
 
-        #expect(store.rows.first?.value == nil)
+        // The server sends 0 when it has no price to sum; the client reports
+        // what it was told. An absent field is what a key without
+        // STOCK_PRICES_VIEW gets.
+        #expect(store.rows.first { $0.name == "Cookies" }?.value == 0)
+        #expect(store.rows.first { $0.name == "Almonds" }?.value == nil)
     }
 
     @Test("Search narrows by name, case-insensitively")
