@@ -136,7 +136,7 @@ public final class BookingController {
             lastAction = request.action
             return true
         } catch {
-            self.error = VictualError.mapping(error)
+            self.error = VictualError.writeFailure(error)
             lastBooking = nil
             lastAction = nil
             await refreshPermissionsIfForbidden()
@@ -163,7 +163,7 @@ public final class BookingController {
             try await client.undoTransaction(id: transactionID)
             return true
         } catch {
-            self.error = VictualError.mapping(error)
+            self.error = VictualError.writeFailure(error)
             await refreshPermissionsIfForbidden()
             return false
         }

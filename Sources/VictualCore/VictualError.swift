@@ -35,6 +35,37 @@ public enum VictualError: Error, Sendable {
     /// The request never reached the server, or the connection dropped.
     case transportFailed(underlying: any Error)
 
+    /// A write was sent and the server did not answer in time, or the connection
+    /// dropped while waiting.
+    ///
+    /// The booking may have been recorded. Treat it as neither done nor failed:
+    /// do not send it again. The server offers nothing to ask "did this one
+    /// happen" — a stock booking carries no idempotency key and no
+    /// client-supplied transaction id — so the answer is in the stock and its
+    /// history, which a screen should refresh.
+    case outcomeUnknown(underlying: any Error)
+
+    /// Maps a failure of a *write* onto this type.
+    ///
+    /// A timeout or a dropped connection after sending leaves the outcome
+    /// unknown; every other failure is mapped as ``mapping(_:)`` does. A refused
+    /// connection or a missing network means nothing was sent, so those stay
+    /// ordinary transport failures that are safe to retry.
+    public static func writeFailure(_ error: any Error) -> VictualError {
+        let mapped = mapping(error)
+        guard case .transportFailed(let underlying) = mapped,
+            let urlError = underlying as? URLError,
+            urlError.code == .timedOut || urlError.code == .networkConnectionLost
+        else { return mapped }
+        return .outcomeUnknown(underlying: underlying)
+    }
+
+    /// Whether this is ``outcomeUnknown(underlying:)``.
+    public var isOutcomeUnknown: Bool {
+        if case .outcomeUnknown = self { return true }
+        return false
+    }
+
     /// Maps a thrown error from the generated client onto this type.
     ///
     /// Anything already a `VictualError` passes through unchanged, so wrapper
@@ -79,7 +110,7 @@ public enum VictualError: Error, Sendable {
         switch self {
         case .transportFailed, .serverError:
             return true
-        case .invalidServerURL, .unauthorized, .forbidden, .notFound, .badRequest,
+        case .invalidServerURL, .outcomeUnknown, .unauthorized, .forbidden, .notFound, .badRequest,
             .unexpectedStatus, .decodingFailed:
             return false
         }
@@ -107,6 +138,8 @@ extension VictualError: LocalizedError {
             return "The server's response could not be read."
         case .transportFailed(let underlying):
             return "Could not reach the server: \(underlying.localizedDescription)"
+        case .outcomeUnknown:
+            return "The server did not answer in time, so it is not known whether that was recorded. Stock has been refreshed. Check it before trying again."
         }
     }
 }
@@ -133,7 +166,8 @@ extension VictualError: Equatable {
         case (.unexpectedStatus(let a), .unexpectedStatus(let b)):
             return a == b
         case (.decodingFailed(let a), .decodingFailed(let b)),
-            (.transportFailed(let a), .transportFailed(let b)):
+            (.transportFailed(let a), .transportFailed(let b)),
+            (.outcomeUnknown(let a), .outcomeUnknown(let b)):
             return a as NSError == b as NSError
         default:
             return false

@@ -153,6 +153,10 @@ struct BookingForm: View {
         Task {
             if await workspace.perform(request) {
                 dismiss()
+            } else if workspace.bookings.error?.isOutcomeUnknown == true {
+                // It may have gone through. Close the form so it cannot be sent
+                // again blind; the alert explains, and the stock was refreshed.
+                dismiss()
             } else {
                 isCommitting = false
             }

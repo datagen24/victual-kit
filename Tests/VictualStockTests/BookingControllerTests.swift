@@ -116,6 +116,32 @@ struct BookingControllerTests {
         #expect(transport.recorder.requests.contains { $0.request.path == "/user/capabilities" })
     }
 
+    @Test("A booking that times out has an unknown outcome and is not sent again")
+    func timeoutIsUnknown() async {
+        let transport = StubTransport { _, _, _, _ in throw URLError(.timedOut) }
+        let controller = BookingController(client: VictualClient.stubbed(transport))
+
+        let ok = await controller.perform(.consume(productID: 7, amount: 1))
+
+        #expect(!ok)
+        #expect(controller.error?.isOutcomeUnknown == true)
+        #expect(controller.error?.isRetryable == false)
+        #expect(!controller.canUndoLast)
+        // One request, never a second: the controller does not retry a write.
+        #expect(transport.recorder.requests.count == 1)
+    }
+
+    @Test("A refused connection means nothing was sent, so it is an ordinary failure")
+    func refusedConnectionIsNotUnknown() async {
+        let transport = StubTransport { _, _, _, _ in throw URLError(.cannotConnectToHost) }
+        let controller = BookingController(client: VictualClient.stubbed(transport))
+
+        await controller.perform(.consume(productID: 7, amount: 1))
+
+        #expect(controller.error?.isOutcomeUnknown == false)
+        #expect(controller.error?.isRetryable == true)
+    }
+
     @Test("A locally-refused booking never reaches the server")
     func refusesLocallyInvalidBooking() async {
         let (client, transport) = testClient()
