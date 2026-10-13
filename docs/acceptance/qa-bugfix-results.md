@@ -67,3 +67,27 @@ Merge #23 first, then #24, #25, #26, #27, #28, #29, #30, #31, each after the one
 - Seven missing transaction types, including `transfer_from` and `transfer_to`.
 - The `product` embedded in each `missing_products` entry.
 - `stock_amount_aggregated` and `stock_amount_opened_aggregated` on the product detail.
+
+## Round 2
+
+Eight follow-up items, in PRs #33 to #39. This section records the server findings behind them.
+
+### Prices: what the server sends
+
+- A stock entry's own `price` is `null` when no price was recorded. A key without `STOCK_PRICES_VIEW` gets no `price` field at all.
+- `GET /stock` and `GET /stock/volatile` send `value` as 0 for stock whose entries have no price. Without `STOCK_PRICES_VIEW` the field is absent.
+- `GET /stock/products/{id}` sends `stock_value`, `last_price` and `current_price` as 0 for the same stock, but `avg_price` as `null`. Without the permission all four are absent.
+
+The server turns unknown into 0 in the `stock_current` view: `SUM(IFNULL(price, 0) * amount)` in `migrations/0233.sql`, and `COALESCE` in `0298.pgsql.sql`. A minimal change is to return `NULL` when any contributing entry has a `NULL` price, as the client's location view already does. The detail's last and current price need the same treatment.
+
+The client reports what it receives. A 0 total shows as 0.00, and an absent value shows as a dash. It cannot tell free from unpriced in the list totals.
+
+### Timeouts and writes
+
+- Stock bookings carry no idempotency key and no client transaction id. Only label printing accepts an `Idempotency-Key`.
+- `GET /stock/transactions/{id}` exists, but the id is chosen by the server, so it cannot answer "did my request happen".
+- Medication events are addressed by source system and event id in the path, so a retry reuses the same identity.
+
+A timed-out booking is reported as unknown, the stock is refreshed and no retry is offered. The request that would fix this is an idempotency key, or a client-supplied transaction id, on the five stock bookings.
+
+Limits are 10 s for reads, 30 s for writes and 60 s for synchronization. On the dev instance reads took 0.07 to 0.33 s and writes 0.19 to 0.51 s.

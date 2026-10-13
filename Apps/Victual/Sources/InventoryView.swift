@@ -113,6 +113,9 @@ struct InventoryView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
+            groupFilterMenu
+        }
+        ToolbarItem(placement: .primaryAction) {
             Menu {
                 BookingButtons(workspace: workspace)
             } label: {
@@ -127,6 +130,30 @@ struct InventoryView: View {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
             .disabled(workspace.stock.state.isLoading)
+        }
+    }
+
+    /// Limits the table to one product group and everything nested in it.
+    ///
+    /// Beside search because it narrows the same list. Shown only when the
+    /// instance has groups. Paths are shown whole ("Dairy / Cheese"), so a
+    /// nested group reads as what it is without an indented tree.
+    @ViewBuilder
+    private var groupFilterMenu: some View {
+        if !workspace.stock.productGroups.isEmpty {
+            Picker(
+                "Group",
+                selection: Bindable(workspace.stock).groupFilter
+            ) {
+                Text("All groups").tag(GroupFilter.all)
+                Text("Ungrouped").tag(GroupFilter.ungrouped)
+                Divider()
+                ForEach(workspace.stock.productGroups) { group in
+                    Text(group.path).tag(GroupFilter.group(group.id))
+                }
+            }
+            .pickerStyle(.menu)
+            .help("Show only products in a group, including its sub-groups.")
         }
     }
 

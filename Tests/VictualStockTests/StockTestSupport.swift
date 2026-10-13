@@ -16,6 +16,7 @@ struct RouteTable: Sendable {
     var quantityUnits = "[]"
     var locations = "[]"
     var locationsResolved = "[]"
+    var productGroupsResolved = "[]"
     var productDetail = #"{"product":{"id":7,"name":"Cookies","qu_id_stock":3},"stock_amount":2}"#
     var entries = "[]"
     var locationEntries = "[]"
@@ -28,6 +29,7 @@ struct RouteTable: Sendable {
 
     func body(for path: String) -> String {
         if path.hasPrefix("/objects/quantity_units") { return quantityUnits }
+        if path.hasPrefix("/objects/product_groups_resolved") { return productGroupsResolved }
         if path.hasPrefix("/objects/locations_resolved") { return locationsResolved }
         if path.hasPrefix("/objects/locations") { return locations }
         if path.hasPrefix("/stock/volatile") { return volatile }
