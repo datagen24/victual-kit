@@ -108,6 +108,8 @@ layout, physical rotation. The Medications evidence above is **simulator Health*
 were created in the simulator's Health app), through the **demo** server, so it shows the UI and the HealthKit read
 path in the simulator only.
 
+- DEVICE: does iOS offer to save the API key as a password when connecting, and does VoiceOver announce the field as a secure field? NOT RUN.
+
 ## Test data left on the dev instance
 
 `ui1-Pantry`, `ui1-Fridge`, `ui1-Rice`, `ui1-Milk`, `ui1-Pasta` (below its minimum of 10), `ui1-Eggs`, and a user
