@@ -22,6 +22,13 @@ public struct ProductDetail: Hashable, Sendable, Identifiable {
     /// Whether the aggregated amounts are filled.
     public var isAggregatedAmount: Bool
 
+    /// Whether this is a parent whose sub-products' stock the server added up.
+    ///
+    /// Then ``stockAmount`` is the parent's own and ``stockAmountAggregated``
+    /// includes its children, and a screen should show both rather than imply
+    /// the total can all be used from the parent.
+    public var hasChildStock: Bool { isAggregatedAmount && stockAmountAggregated != nil }
+
     /// What to show as "in stock": a parent's total across its sub-products
     /// when the server fills it, otherwise the product's own amount.
     ///

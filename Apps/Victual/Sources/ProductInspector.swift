@@ -57,10 +57,27 @@ struct ProductInspector: View {
 
     private func summary(_ detail: ProductDetail) -> some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 6) {
-            row(
-                "In stock",
-                QuantityUnit.describe(detail.displayedStockAmount, in: detail.stockQuantityUnit)
-            )
+            if detail.hasChildStock {
+                row(
+                    "This product",
+                    QuantityUnit.describe(detail.stockAmount, in: detail.stockQuantityUnit)
+                )
+                row(
+                    "Including child products",
+                    QuantityUnit.describe(detail.displayedStockAmount, in: detail.stockQuantityUnit)
+                )
+                GridRow {
+                    Text("Child products' stock counts in the total. It is used from this product only when sub-product substitution is allowed.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .gridCellColumns(2)
+                }
+            } else {
+                row(
+                    "In stock",
+                    QuantityUnit.describe(detail.displayedStockAmount, in: detail.stockQuantityUnit)
+                )
+            }
             if detail.displayedStockAmountOpened > 0 {
                 row(
                     "Opened",
