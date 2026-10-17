@@ -42,10 +42,14 @@ extension VictualError {
     /// match the running code.
     ///
     /// The plain-text body says which, but reading it is asynchronous and the
-    /// wrappers unwrap synchronously, so the case carries no message and
-    /// ``errorDescription`` explains it instead.
+    /// wrappers unwrap synchronously, so the message is the document's own
+    /// account of this response. A 503 that is not this one -- a reverse proxy
+    /// with nothing behind it -- keeps the generic wording instead.
     static func from(_ response: Components.Responses.SchemaUnavailable) -> VictualError {
         _ = response
-        return .serverError(statusCode: 503, message: nil)
+        return .serverError(
+            statusCode: 503,
+            message: "The server's database is unavailable or is being updated. Try again shortly."
+        )
     }
 }

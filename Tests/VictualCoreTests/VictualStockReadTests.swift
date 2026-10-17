@@ -445,7 +445,7 @@ struct SharedErrorResponseTests {
         #expect(error == .serverError(statusCode: 500, message: "boom"))
     }
 
-    @Test("A 503 from the schema gate carries no message")
+    @Test("A 503 from the schema gate says the database is unavailable")
     func schemaUnavailable() async throws {
         // The gate answers before routing, in plain text rather than JSON.
         let transport = StubTransport { _, _, _, _ in
@@ -459,7 +459,7 @@ struct SharedErrorResponseTests {
         let error = await #expect(throws: VictualError.self) {
             try await client.currentStock()
         }
-        #expect(error == .serverError(statusCode: 503, message: nil))
+        #expect(error == .serverError(statusCode: 503, message: "The server's database is unavailable or is being updated. Try again shortly."))
     }
 
     @Test("A 403 on a route with a path parameter maps the same way")

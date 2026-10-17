@@ -227,9 +227,11 @@ def drop_null_union_members(node: object, path: str = "") -> list[str]:
     server sends.
 
     What is lost is the ability to send an explicit `null` through a generated
-    type, which only `RefillSettingsUpdate.rule` and `PUT /stock/entry`'s
-    `shopping_location_id` give a meaning of their own; neither is called
-    through the generated client.
+    type. Three request fields give null a meaning of their own:
+    `RefillSettingsUpdate.rule`, and `PUT /stock/entry`'s `price` and
+    `shopping_location_id`, where null clears the stored value and omission
+    keeps it. None is called through the generated client; a wrapper that needs
+    to clear one must send that request raw.
     """
     dropped: list[str] = []
     if isinstance(node, dict):

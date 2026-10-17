@@ -140,8 +140,6 @@ extension VictualError: LocalizedError {
             return "That item no longer exists on the server."
         case .badRequest(let message):
             return message ?? "The server rejected the request."
-        case .serverError(503, nil):
-            return "The server's database is unavailable or is being updated. Try again shortly."
         case .serverError(let statusCode, let message):
             return message ?? "The server reported an error (HTTP \(statusCode))."
         case .unexpectedStatus(let statusCode):

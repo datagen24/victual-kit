@@ -32,14 +32,14 @@ public struct VictualRefillService: RefillSource {
     public func refills(asOf: CalendarDay) async throws -> [RefillItem] {
         let response = try await client.send(
             .get, path: "/refills", query: [("as_of", asOf.description)], operationID: "getRefills")
-        let list = try Self.decode(RefillListWire.self, response.data)
+        let list = try client.decode(RefillListWire.self, from: response.data)
         return try Self.adapt { try (list.refills ?? []).map(RefillItem.init(wire:)) }
     }
 
     public func notices(asOf: CalendarDay) async throws -> [RefillNotice] {
         let response = try await client.send(
             .get, path: "/refills/notices", query: [("as_of", asOf.description)], operationID: "getRefillsNotices")
-        let list = try Self.decode(RefillNoticeListWire.self, response.data)
+        let list = try client.decode(RefillNoticeListWire.self, from: response.data)
         return try Self.adapt { try (list.notices ?? []).map(RefillNotice.init(wire:)) }
     }
 
@@ -60,10 +60,6 @@ public struct VictualRefillService: RefillSource {
 
     private struct FillHistory: Decodable {
         var fills: [Components.Schemas.RefillFill]?
-    }
-
-    private static func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
-        do { return try JSONDecoder().decode(type, from: data) } catch { throw VictualError.decodingFailed(underlying: error) }
     }
 
     private static func adapt<T>(_ work: () throws -> T) throws -> T {

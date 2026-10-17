@@ -351,7 +351,7 @@ struct BookingResultTests {
         }
     }
 
-    @Test("A 503 from the schema gate maps to a message-less server error")
+    @Test("A 503 from the schema gate says the database is unavailable")
     func mapsSchemaUnavailable() async throws {
         // The gate answers in plain text, before routing.
         let transport = StubTransport { _, _, _, _ in
@@ -362,10 +362,10 @@ struct BookingResultTests {
         }
         let client = VictualClient.stubbed(transport)
 
-        await #expect(throws: VictualError.serverError(statusCode: 503, message: nil)) {
+        await #expect(throws: VictualError.serverError(statusCode: 503, message: "The server's database is unavailable or is being updated. Try again shortly.")) {
             _ = try await client.consume(productID: 7, amount: 1)
         }
-        await #expect(throws: VictualError.serverError(statusCode: 503, message: nil)) {
+        await #expect(throws: VictualError.serverError(statusCode: 503, message: "The server's database is unavailable or is being updated. Try again shortly.")) {
             try await client.undoTransaction(id: "tx-abc")
         }
     }
