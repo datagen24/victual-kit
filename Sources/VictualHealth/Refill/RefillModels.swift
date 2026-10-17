@@ -1,4 +1,5 @@
 import Foundation
+import VictualAPI
 
 /// Where a refill's reorder date came from. The screen always shows it
 /// (ADR-0042 §2): a date from an explicit entry, from a rule for this medication,
@@ -116,11 +117,14 @@ public struct RefillFillRecord: Sendable, Equatable, Identifiable {
 
 // MARK: - Wire shapes
 //
-// Hand-written decoders, not the generated types: the generator skips a property
-// typed `oneOf: [$ref, null]` ("Schema null is not supported"), so the generated
-// `RefillState` has no `current_fill` and no `open_order`, which the screen needs.
-// Every field is optional, as in the spec, and an unknown enum value decodes to
-// `nil` rather than failing the whole list; `RefillItem(wire:)` then decides.
+// Partly generated. `current_fill`, `open_order` and each history fill decode into
+// the generated `RefillCurrentFill`, `RefillOpenOrder` and `RefillFill`: they carry
+// no enum. The rest stays hand-written because the generated `RefillState`,
+// `RefillDetail`, `RefillNotice` and `RefillEstimate` put `@frozen` enums on
+// `status`, `as_of_source`, `kind` and the estimate's `source` and `reason`. The
+// server adds a rule kind, and with it a `source` value, without a client change;
+// a frozen enum would then fail the whole list, where here an unknown value decodes
+// to `nil` and `RefillItem(wire:)` decides what to do with that one item.
 
 enum RefillAdaptationError: Error { case missing(String) }
 
@@ -135,36 +139,19 @@ struct RefillWire: Decodable {
             case reorderDate = "reorder_date", warningDate = "warning_date", source, leadDays = "lead_days", reason
         }
     }
-    struct Fill: Decodable {
-        var id: Int?
-        var filledOn: String?
-        var suppliedDays: Int?
-        var isCurrent: Bool?
-        var voidedAt: String?
-        enum CodingKeys: String, CodingKey {
-            case id, filledOn = "filled_on", suppliedDays = "supplied_days", isCurrent = "is_current", voidedAt = "voided_at"
-        }
-    }
-    struct Order: Decodable {
-        var orderedOn: String?
-        var ageDays: Int?
-        enum CodingKeys: String, CodingKey { case orderedOn = "ordered_on", ageDays = "age_days" }
-    }
-
     var recipeID: Int?
     var recipeName: String?
     var asOf: String?
     var asOfSource: String?
     var status: String?
     var daysOverdue: Int?
-    var currentFill: Fill?
+    var currentFill: Components.Schemas.RefillCurrentFill?
     var estimate: Estimate?
-    var openOrder: Order?
-    var fills: [Fill]?
+    var openOrder: Components.Schemas.RefillOpenOrder?
 
     enum CodingKeys: String, CodingKey {
         case recipeID = "recipe_id", recipeName = "recipe_name", asOf = "as_of", asOfSource = "as_of_source", status
-        case daysOverdue = "days_overdue", currentFill = "current_fill", estimate, openOrder = "open_order", fills
+        case daysOverdue = "days_overdue", currentFill = "current_fill", estimate, openOrder = "open_order"
     }
 }
 
@@ -239,7 +226,7 @@ extension Character {
 }
 
 extension RefillFillRecord {
-    init?(wire fill: RefillWire.Fill) {
+    init?(wire fill: Components.Schemas.RefillFill) {
         guard let id = fill.id, let day = fill.filledOn.flatMap(CalendarDay.init) else { return nil }
         self.init(id: id, filledOn: day, suppliedDays: fill.suppliedDays, isCurrent: fill.isCurrent ?? false, isVoided: fill.voidedAt != nil)
     }

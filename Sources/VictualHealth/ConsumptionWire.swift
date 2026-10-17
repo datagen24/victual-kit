@@ -1,9 +1,12 @@
 import Foundation
 import VictualCore
 
-// Hand-written to match ADR-0041's `.devtools/adr0041/consumption-events.openapi.json`
-// (design fragment, Proposed). The routes are not in `victual.openapi.json` yet, so
-// nothing is generated; these are replaced, not wrapped, when #700 lands them.
+// Hand-written, though the routes are in `victual.openapi.json` and generate. Requests
+// (`ConsumptionEventSubmission`, `RFC3339Timestamp`) keep the timestamp text for
+// byte-identical replay, which a generated `Date` cannot. The capabilities response
+// stays because its `features` items are a `@frozen` enum, so a feature name a newer
+// server adds would fail the decode. The event state, review reason and error kind
+// enums below mirror the spec and are pinned to it by `WireContractTests`.
 
 /// An RFC 3339 timestamp that remembers the text it was built from.
 ///

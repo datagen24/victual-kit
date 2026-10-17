@@ -460,13 +460,22 @@ struct RefillWireTests {
         let (service, transport) = service(list)
         let items = try await service.refills(asOf: day("2026-03-12"))
         #expect(transport.recorder.requests[0].url.query == "as_of=2026-03-12")
-        #expect(items[0].filledOn == day("2026-01-01"))  // the generated type would have dropped this
+        #expect(items[0].filledOn == day("2026-01-01"))  // from `current_fill`, which the frozen-enum `RefillState` would reject on an unknown value
         #expect(items[0].suppliedDays == 90)
         #expect(items[0].source == .fallback)
         #expect(items[0].warningDate == day("2026-03-11"))
         #expect(items[1].unknownReason == .noFill)
         #expect(items[1].asOfSource == .serverUTC)
         #expect(items[1].openOrder?.ageDays == 2)
+    }
+
+    @Test func theFillHistoryDecodesIntoTheGeneratedFillAndKeepsVoidedOnes() async throws {
+        let json = #"{"recipe_id":12,"status":"a-status-this-client-has-not-met","fills":[{"id":4,"filled_on":"2026-01-01","supplied_days":90,"is_current":true},{"id":3,"filled_on":"2025-10-01","is_current":false,"voided_at":"2025-10-02T08:00:00.000000Z"}]}"#
+        let (service, _) = service(json)
+        let fills = try await service.fills(recipeID: 12, asOf: day("2026-03-12"))
+        #expect(fills.map(\.id) == [4, 3])
+        #expect(fills[0].isCurrent && !fills[0].isVoided)
+        #expect(fills[1].isVoided)
     }
 
     @Test func noticesDecodeAndAMalformedKeyIsRefused() async throws {

@@ -1,4 +1,5 @@
 import Foundation
+import VictualAPI
 import VictualCore
 
 /// What the refill store reads. ``VictualRefillService`` is the real one.
@@ -51,8 +52,14 @@ public struct VictualRefillService: RefillSource {
         let response = try await client.send(
             .get, path: "/consumption/recipes/\(recipeID)/refill", query: [("as_of", asOf.description)],
             operationID: "getConsumptionRecipesByRecipeIdRefill")
-        let wire = try Self.decode(RefillWire.self, response.data)
-        return (wire.fills ?? []).compactMap(RefillFillRecord.init(wire:))
+        // Only `fills` is read, so the detail's own frozen enums (`status`, `as_of_source`)
+        // are not decoded here.
+        let history = try client.decode(FillHistory.self, from: response.data)
+        return (history.fills ?? []).compactMap(RefillFillRecord.init(wire:))
+    }
+
+    private struct FillHistory: Decodable {
+        var fills: [Components.Schemas.RefillFill]?
     }
 
     private static func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
