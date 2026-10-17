@@ -119,9 +119,12 @@ extension StockLogRow {
             productID: schema.productId,
             amount: schema.amount ?? 0,
             transactionID: schema.transactionId,
-            transactionType: schema.transactionType.map(StockTransactionKind.init),
-            // `integer` 0/1 on the wire, like every other flag this API sends;
-            // the document said `boolean` and `Scripts/update-openapi.py` repairs it.
+            // Required since 0.4.4, so a row without one fails decoding rather
+            // than arriving untyped. The domain property stays optional so
+            // callers building rows by hand need not invent a kind.
+            transactionType: StockTransactionKind(schema.transactionType),
+            // A JSON boolean: the server has converted the integer column since
+            // 0.2.0 (issue #230), and the document now types it that way too.
             spoiled: schema.spoiled ?? false,
             stockID: schema.stockId,
             price: schema.price,

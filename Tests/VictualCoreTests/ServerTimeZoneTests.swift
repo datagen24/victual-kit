@@ -32,7 +32,7 @@ struct ServerTimeZoneTests {
     func clientBindsItsZone() async throws {
         let body = """
             [{"id": 77, "stock_id": "lot-77", "product_id": 7, "amount": 1,
-              "best_before_date": "2026-01-31",
+              "open": 0, "best_before_date": "2026-01-31",
               "row_created_timestamp": "2026-09-01 10:00:00"}]
             """
         let client = VictualClient(

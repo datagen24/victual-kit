@@ -115,11 +115,11 @@ struct GeneratedSpecTests {
     /// response again.
     @Test("Documented boolean flags decode as booleans")
     func documentedBooleansAreBooleans() throws {
-        let booking = Data(#"[{"id": 1, "spoiled": false, "transaction_id": "tx"}]"#.utf8)
+        let booking = Data(#"[{"id": 1, "spoiled": false, "transaction_id": "tx", "transaction_type": "purchase"}]"#.utf8)
         let rows = try decoder.decode([Components.Schemas.StockLogEntry].self, from: booking)
         #expect(rows.first?.spoiled == false)
 
-        let spoiledRow = Data(#"[{"id": 2, "spoiled": true}]"#.utf8)
+        let spoiledRow = Data(#"[{"id": 2, "spoiled": true, "transaction_type": "consume"}]"#.utf8)
         #expect(
             try decoder.decode([Components.Schemas.StockLogEntry].self, from: spoiledRow)
                 .first?.spoiled == true
@@ -148,5 +148,30 @@ struct GeneratedSpecTests {
                 Components.Schemas.CurrentUserCapabilities.self, from: capabilities
             ).readOnly == true
         )
+    }
+
+    /// A union with a `null` member on an optional property generates.
+    ///
+    /// The generator cannot model `{"type": "null"}` inside a `oneOf`, and from
+    /// 0.4.4 skipped the whole property: purchases lost `price`, and the refill
+    /// state lost `current_fill`. The normalizer drops the null member; these
+    /// pin that the property exists, that a null decodes as `nil`, and that a
+    /// missing price is left off the wire rather than sent as zero.
+    @Test("Optional unions with a null member keep their property")
+    func nullUnionMembersDropped() throws {
+        typealias Add = Operations.PostStockProductsByProductIdAdd.Input.Body.JsonPayload
+        let priced = Add(amount: .case1(2), price: .case1(1.25))
+        let unpriced = Add(amount: .case1(2))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        #expect(String(decoding: try encoder.encode(priced), as: UTF8.self) == #"{"amount":2,"price":1.25}"#)
+        #expect(String(decoding: try encoder.encode(unpriced), as: UTF8.self) == #"{"amount":2}"#)
+
+        let empty = try decoder.decode(
+            Components.Schemas.RefillState.self,
+            from: Data(#"{"current_fill": null, "open_order": null}"#.utf8)
+        )
+        #expect(empty.currentFill == nil)
+        #expect(empty.openOrder == nil)
     }
 }

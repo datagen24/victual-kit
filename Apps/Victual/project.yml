@@ -56,7 +56,7 @@ targets:
         # so an application and the server it talks to are legible as the same
         # project at a glance. CFBundleVersion below stays a plain integer, which
         # is the one the system actually orders builds by.
-        MARKETING_VERSION: "0.4.0"
+        MARKETING_VERSION: "0.4.4"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete

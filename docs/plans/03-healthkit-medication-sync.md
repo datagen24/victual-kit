@@ -10,13 +10,16 @@ Victual [plan 22](https://github.com/datagen24/victual/blob/master/docs/plans/22
 and the proposed
 [ADR-0041](https://github.com/datagen24/victual/pull/711) (revised 2026-10-09 after this plan's
 first review, `bd7df261`) for the receiving API. Tracked
-server-side as [victual#702](https://github.com/datagen24/victual/issues/702), which waits
-on #696 (contract), #700 (external events) and #701 (refills). **None of those has
-landed, so every server shape below is the proposed one.**
+server-side as [victual#702](https://github.com/datagen24/victual/issues/702). The
+external-event and refill routes (#700, #701) are in the vendored Victual 0.4.4 document,
+so they no longer block this client. The shapes below are ADR-0041's proposed shapes, and
+the vendored document is what they are checked against.
 
 **Status:** see the [plan index](README.md).
 
-**Server impact:** requires Victual 0.5.0 or later. Nothing here is callable on 0.3.0.
+**Server impact:** the consumption, mapping and refill routes are in the vendored Victual
+document, which is the 0.4.4 release. They have been in it since 0.4.0. Nothing here is
+callable on 0.3.0.
 [Server feedback](#server-feedback) lists what the contract needs before this client can be
 built honestly against it.
 
@@ -245,10 +248,11 @@ answered all eight:
 | 5 | No quantity | Mapping `default_quantity`, else `needs_review` / `quantity_missing` | Client omits quantity |
 | 6 | Unit strings | Mapping `unit_labels`; `unit_unconfirmed` shows the string; `approve_unit` | Prompt in the Medications screen |
 | 7 | Mapping-screen data | Existing endpoints; new `GET /api/consumption/capabilities` | [Feature visibility](#feature-visibility), [Mapping](#mapping-the-person-decides-the-client-never-guesses) |
-| 8 | OpenAPI | `.devtools/adr0041/` fragment is the interim typed-client source until #700 merges the routes | [Phase 1](#phase-1--model-sync-engine-and-tests-no-server-no-healthkit-import) |
+| 8 | OpenAPI | The routes are in the vendored v0.4.4 document; the `.devtools/adr0041/` fragment is no longer the typed-client source | [Phase 1](#phase-1--model-sync-engine-and-tests-no-server-no-healthkit-import) |
 
-Those are answers on a **Proposed** record; nothing is implemented (#700 is not started)
-and none of it has met a real HealthKit payload. What remains for the maintainer:
+Those are answers on a **Proposed** record, and none of it has met a real HealthKit
+payload. Client code exists for the phases below, and the device spike has not run. What
+remains for the maintainer:
 
 1. **7 days is the ADR's open question 4.** The window decides whether a late `not_logged`
    or deletion restores stock automatically. From this client: a person who undoes a dose
@@ -293,8 +297,8 @@ The result is a table pasted into [Executed](#executed) and a go/no-go on the
 
 Needs a physical iPhone on iOS 26+ with medications entered in Health. The household
 phones are iPhone 16s on iOS 27, and the maintainer's is developer-enrolled. The
-simulator is not used; it has no medication data. The spike waits on the server work
-(#700), which is in flight.
+simulator is not used; it has no medication data. The spike needs a 0.4.4 instance, whose
+document already carries the routes.
 
 ### Phase 1 — model, sync engine and tests (no server, no HealthKit import)
 
@@ -308,7 +312,7 @@ The types are written by hand, with a test that decodes the fragment's own examp
 two cannot drift quietly. Generating from the fragment was considered and rejected. It is a
 design file that #700 may change, and a generated target would have to be regenerated and
 re-reviewed on every revision. The hand-written types are replaced, not wrapped, when the
-routes reach `victual.openapi.json`.
+routes are in `victual.openapi.json`, which they now are.
 
 ### Phase 1b — Xcode project configuration
 
@@ -363,8 +367,9 @@ a mapping needs.
 
 ### Phase 3 — against a real server
 
-When Victual #700 lands and 0.5.0 ships: regenerate (`Scripts/` sync), delete the
-hand-written types in favour of the generated ones, bump `supportedServerVersion`, run the device scenario.
+The routes are in the vendored Victual 0.4.4 document, and `supportedServerVersion` is
+0.4.4. Remaining: replace the hand-written types with the generated ones where the generator
+models them (in progress), then run the device scenario.
 
 ### Phase 4 — refill notices
 
@@ -435,8 +440,8 @@ a product from a medication. App Intents, which stay with the Siri concept.
    - the capabilities check, where a 404 on an older server hides the screen.
 2. The macOS application still builds and does not link `VictualHealth`.
 3. CI's `phone` job builds with the HealthKit entitlement, on the iOS 26+ SDK.
-4. **On a device (cannot be done in CI or the simulator).** Against a Victual 0.5.0
-   instance with #700 landed, running the sequences from ADR-0041's native acceptance
+4. **On a device (cannot be done in CI or the simulator).** Against a Victual 0.4.4
+   instance, running the sequences from ADR-0041's native acceptance
    contract. Split by what proves what:
 
    | ADR-0041 sequence | Server fixture (#700) | Device evidence (#702) | This client's part |
@@ -481,12 +486,12 @@ The spike result goes below, as the text its report produces.
 
 Event and mapping calls are built against a fake, because there is nothing real to call yet:
 
-- The `/consumption` routes are not in the generated client until victual#700, and
-  `VictualClient` keeps its authenticated transport (`channel`) `internal`, so neither
-  `ConsumptionEventSubmitter` nor the new `ConsumptionMappingService` can be implemented
-  outside `VictualCore`. Once the routes are in `victual.openapi.json` the generated client
-  covers them and nothing more is needed; before that, a public
-  `send(_:body:operationID:)` on `VictualClient` would be the missing piece.
+- When this was written, the `/consumption` routes were waiting on victual#700, and
+  `VictualClient` kept its authenticated transport (`channel`) `internal`, so neither
+  `ConsumptionEventSubmitter` nor the new `ConsumptionMappingService` could be implemented
+  outside `VictualCore`. The routes are now in `victual.openapi.json`. The public
+  `send(_:path:query:body:operationID:)` described under Phase 3 code is the transport for
+  them.
 - The mapping editor's *reads* did not need that: products, `quantity_unit_conversions_resolved`
   (now with `query[]` support in `listObjects`) and `/stock/products/{id}/locations` exist
   today, so `VictualMappingCatalog` is real and works against 0.3.x.
@@ -515,9 +520,11 @@ Event and mapping calls are built against a fake, because there is nothing real 
 
 ### Phase 3 code (provisional spec)
 
-Re-vendored from Victual master `d62efe9` (spec sha256 `e7468093…b1b8`, recorded in
-`openapi/spec-lock.json`; `info.version` is still 0.3.2, so no version moved). **Provisional**:
-victual#701 is open. Re-run `Scripts/update-openapi.py` for the final handoff.
+Vendored from the Victual v0.4.4 release tag (upstream commit
+`f1247252311ccea9786b66b8cda3c6f1c537d5e9`, sha256
+`a73cdb65774b951d53fdfde4fce3e4adbf448dd14e982fb77abd8bb24465b0b4`, recorded in
+`openapi/spec-lock.json`). The document is OpenAPI 3.2.0 with `info.version` 0.4.4. It
+replaces the earlier master snapshot, `d62efe9`.
 
 - `VictualClient.send(_:path:query:body:operationID:)` and `decode(_:from:)` are public, and
   `VictualConsumptionService` is the real `ConsumptionEventSubmitter` and

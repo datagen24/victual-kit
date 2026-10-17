@@ -7,16 +7,15 @@ maintainer runs it. **Nothing in this file claims a device or a server accepted 
 A `UNIT` or `FIXTURE` result means a test in this repository passed against this client's own
 fakes and recorded payloads, not that a real server or a real Health store behaved that way.
 
-**Provisional.** The specification is vendored from Victual master while
-[victual#701](https://github.com/datagen24/victual/issues/701) is open. Re-run
-`Scripts/update-openapi.py` for the final handoff and update the commit and hash below.
+The specification is now vendored from the Victual **v0.4.4** release tag, not from master.
+The client commit and test run below predate that re-vendoring.
 
 | | |
 | --- | --- |
 | Client commit | `743ab1f` (branch `claude/healthkit-refills`) |
-| Server commit | Victual master `6ec4173` (the spec file last changed in `d62efe9`) |
-| Spec sha256 | `e7468093452df3d5333388433660981c53440487095355c72c322b270cf9b1b8` (`openapi/spec-lock.json`) |
-| Spec `info.version` | 0.3.2 |
+| Server commit | Victual v0.4.4 `f1247252311ccea9786b66b8cda3c6f1c537d5e9` (tag `v0.4.4`) |
+| Spec sha256 | `a73cdb65774b951d53fdfde4fce3e4adbf448dd14e982fb77abd8bb24465b0b4` (upstream, `openapi/spec-lock.json`) |
+| Spec `info.version` | 0.4.4 (OpenAPI 3.2.0) |
 | Client test run | `swift test`, 2026-10-10: all five test targets passed (16, 61, 139, 116 and 8 tests) |
 
 Evidence kinds: `FIXTURE` (a recorded payload decoded), `UNIT` (a test against fakes),
@@ -100,7 +99,8 @@ Reported, not worked around.
    `integer | null`. The client shows "Days supplied not recorded".
 4. **The generator drops `current_fill` and `open_order`.** `oneOf: [$ref, null]` is not
    supported, so the generated `RefillState` lacks the two fields the screen needs. The client
-   decodes refills by hand.
+   decodes refills by hand. The `drop_null_union_members` repair in the v0.4.4 sync makes the
+   generator emit both fields; see [openapi/README.md](../../openapi/README.md).
 5. **Closed enums.** A generated `@frozen` enum fails on a value a newer server adds, so
    capabilities and mappings are hand-written, and an unknown event state or reason surfaces as
    a failed sync.

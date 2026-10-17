@@ -7,22 +7,27 @@ import VictualAPI
 ///
 /// ## Why this one route does not use the generated client
 ///
-/// The specification types the response as an undiscriminated `oneOf` over nine
-/// entity schemas, and the generator decodes such a union by trying each case in
-/// declaration order and keeping the first that succeeds. `Product` is declared
-/// first and has no required properties, so **every** row of every entity
-/// decodes as a `Product` — a quantity unit arrives with its `name_plural`
-/// discarded, and a `locations_resolved` row, whose schema is not in the union
-/// at all, arrives with its `path` gone.
+/// As of 0.4.4 the specification types the response as an undiscriminated
+/// `anyOf` over thirteen entity schemas, and says outright that a client must
+/// decode with the member its `x-victual-entity-schemas` extension maps the
+/// requested `{entity}` to, not by trying members in order. The generated
+/// client cannot do that: it has no notion of the extension, and decodes the
+/// union by trying members in declaration order. `Product` used to match any
+/// object and swallow every row; it now has required properties, so that
+/// failure is fixed on the server, but the generated decode is still
+/// order-dependent where members overlap.
 ///
-/// Those two fields are exactly what a stock list needs: an amount cannot be
-/// rendered without a unit's plural, and the sidebar's locations tree is built
-/// from `path`. So this file issues the request itself, through the same
-/// transport and the same middleware chain the generated client uses, and
-/// decodes into the hand-written row types below.
+/// The map also stops short of what this package reads. `quantity_units`,
+/// `locations`, `locations_resolved` and `products` have a member, but
+/// `quantity_unit_conversions_resolved` and `product_groups_resolved` have
+/// none, so those two could not be decoded from the union at all. One route
+/// reading half its entities one way and half the other would be harder to
+/// follow than one hand-written path, so this file issues the request itself,
+/// through the same transport and the same middleware chain the generated
+/// client uses, and decodes into the hand-written row types below.
 ///
 /// Everything else in ``VictualCore`` goes through the generated client, and
-/// should. This is the one place where doing so would silently lose data.
+/// should. This is the one place where the generated union does not fit.
 extension VictualClient {
     /// Every quantity unit the instance defines, by id.
     ///

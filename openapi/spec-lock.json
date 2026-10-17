@@ -1,11 +1,11 @@
 {
   "upstreamRepository": "https://github.com/datagen24/victual",
-  "upstreamRef": "v0.4.0",
+  "upstreamRef": "v0.4.4",
   "upstreamPath": "victual.openapi.json",
-  "upstreamCommit": "89cea94a0c7e400628ce4b600ae8c95c595f562b",
-  "upstreamSha256": "e0b8cc5de387a97e160afb8be770a7aaa90662cea467b208467562ef08905442",
-  "generatedSha256": "fcc030b1f6dd132a909ebe9ffb660ab929a43f3a66a7f1705647829aea8da67e",
-  "syncedAt": "2026-10-11T14:54:31Z",
+  "upstreamCommit": "f1247252311ccea9786b66b8cda3c6f1c537d5e9",
+  "upstreamSha256": "a73cdb65774b951d53fdfde4fce3e4adbf448dd14e982fb77abd8bb24465b0b4",
+  "generatedSha256": "a197165654461412423e12a29348de136d2a5341d0c3f54d02db6a733db5e604",
+  "syncedAt": "2026-10-17T12:43:25Z",
   "normalizations": {
     "pathsRewritten": 0,
     "operationIdsAssigned": 168,
@@ -14,20 +14,28 @@
     "compositionConflictsResolved": 0,
     "danglingRefsRepaired": [],
     "integerFlagsRetyped": [],
-    "transactionTypesAdded": [
-      "self-production",
-      "stock-edit-new",
-      "stock-edit-old",
-      "stock-measured-new",
-      "stock-measured-old",
-      "transfer_from",
-      "transfer_to"
+    "nullUnionMembersDropped": [
+      "paths//stock/entry/{entryId}/put/requestBody/content/application/json/schema/price",
+      "paths//stock/entry/{entryId}/put/requestBody/content/application/json/schema/shopping_location_id",
+      "paths//stock/products/{productId}/add/post/requestBody/content/application/json/schema/price",
+      "paths//stock/products/{productId}/inventory/post/requestBody/content/application/json/schema/price",
+      "paths//stock/products/by-barcode/{barcode}/add/post/requestBody/content/application/json/schema/price",
+      "paths//stock/products/by-barcode/{barcode}/inventory/post/requestBody/content/application/json/schema/price",
+      "components/schemas/ProductDetailsResponse/default_consume_location",
+      "components/schemas/ProductPriceHistory/shopping_location",
+      "components/schemas/ChoreDetailsResponse/last_done_by",
+      "components/schemas/ChoreDetailsResponse/next_execution_assigned_user",
+      "components/schemas/CurrentChoreResponse/next_execution_assigned_user",
+      "components/schemas/CurrentTaskResponse/assigned_to_user",
+      "components/schemas/CurrentTaskResponse/category",
+      "components/schemas/RefillState/current_fill",
+      "components/schemas/RefillState/open_order",
+      "components/schemas/RefillSettings/rule",
+      "components/schemas/RefillDetail/current_fill",
+      "components/schemas/RefillDetail/open_order",
+      "components/schemas/RefillDetail/explicit_date",
+      "components/schemas/RefillSettingsUpdate/rule"
     ],
-    "aggregatedProductAmountsAdded": [
-      "stock_amount_aggregated",
-      "stock_amount_opened_aggregated"
-    ],
-    "missingProductsEmbedProduct": true,
     "serverPlaceholderReplaced": true,
     "upstreamIssuesLeftInPlace": []
   }

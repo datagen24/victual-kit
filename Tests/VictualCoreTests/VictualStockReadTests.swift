@@ -125,7 +125,7 @@ struct WireDateTests {
     func decodesDatabaseTimestamps() async throws {
         let body = """
             [{"id": 77, "stock_id": "lot-77", "product_id": 7, "amount": 1,
-              "row_created_timestamp": "2019-05-03 18:24:04"}]
+              "open": 0, "row_created_timestamp": "2019-05-03 18:24:04"}]
             """
         let client = VictualClient.stubbed(StubTransport(status: 200, json: body))
 
@@ -137,7 +137,7 @@ struct WireDateTests {
     @Test("An ISO 8601 timestamp still decodes")
     func decodesISOTimestamps() async throws {
         let body = """
-            [{"id": 77, "stock_id": "lot-77", "product_id": 7, "row_created_timestamp": "2019-05-03T18:24:04Z"}]
+            [{"id": 77, "stock_id": "lot-77", "product_id": 7, "open": 0, "row_created_timestamp": "2019-05-03T18:24:04Z"}]
             """
         let client = VictualClient.stubbed(StubTransport(status: 200, json: body))
 
@@ -412,5 +412,87 @@ struct EntityListingTests {
 
         let sent = try #require(transport.recorder.requests.first)
         #expect(sent.request.headerFields[.userAgent] == "victual-kit-test")
+    }
+}
+
+/// The error responses 0.4.4 shares between every operation.
+///
+/// Before them a `403`, `500` or `503` fell through to `.undocumented` and was
+/// classified by status alone, so the server's own `error_message` was lost.
+/// Each is now a documented case of its own, and these pin that the wrappers
+/// still end up on the same ``VictualError`` — with the message kept.
+@Suite("Shared error responses")
+struct SharedErrorResponseTests {
+    @Test("A 403 maps to .forbidden")
+    func forbidden() async throws {
+        let body = #"{"error_message": "Missing permission STOCK_VIEW"}"#
+        let client = VictualClient.stubbed(StubTransport(status: 403, json: body))
+
+        let error = await #expect(throws: VictualError.self) {
+            try await client.currentStock()
+        }
+        #expect(error == .forbidden)
+    }
+
+    @Test("A 500 keeps the server's message")
+    func serverError() async throws {
+        let client = VictualClient.stubbed(
+            StubTransport(status: 500, json: #"{"error_message":"boom"}"#))
+
+        let error = await #expect(throws: VictualError.self) {
+            try await client.currentStock()
+        }
+        #expect(error == .serverError(statusCode: 500, message: "boom"))
+    }
+
+    @Test("A 503 from the schema gate carries no message")
+    func schemaUnavailable() async throws {
+        // The gate answers before routing, in plain text rather than JSON.
+        let transport = StubTransport { _, _, _, _ in
+            (
+                HTTPResponse(status: .init(code: 503), headerFields: [.contentType: "text/plain"]),
+                HTTPBody("Database schema is out of date")
+            )
+        }
+        let client = VictualClient.stubbed(transport)
+
+        let error = await #expect(throws: VictualError.self) {
+            try await client.currentStock()
+        }
+        #expect(error == .serverError(statusCode: 503, message: nil))
+    }
+
+    @Test("A 403 on a route with a path parameter maps the same way")
+    func forbiddenOnEntries() async throws {
+        let client = VictualClient.stubbed(
+            StubTransport(status: 403, json: #"{"error_message":"no"}"#))
+
+        let error = await #expect(throws: VictualError.self) {
+            try await client.stockEntries(productID: 7)
+        }
+        #expect(error == .forbidden)
+    }
+}
+
+@Suite("Stock entries, 0.4.4 shape")
+struct StockEntriesPriorityTests {
+    /// 0.4.4 types each item as the stock entry plus the use order from
+    /// `stock_next_use`, so the generated item is a two-part wrapper. The entry
+    /// must come out of the first part unchanged; `priority` rides along on the
+    /// wire and is not part of the domain model.
+    @Test("An entry carrying `priority` decodes to the entry")
+    func decodesEntryWithPriority() async throws {
+        let body = """
+            [
+              {"id": 77, "product_id": 7, "amount": 1, "stock_id": "lot-1", "open": 1, "priority": -1},
+              {"id": 78, "product_id": 7, "amount": 2, "stock_id": "lot-2", "open": 0, "priority": -2}
+            ]
+            """
+        let client = VictualClient.stubbed(StubTransport(status: 200, json: body))
+
+        let entries = try await client.stockEntries(productID: 7)
+
+        #expect(entries.map(\.stockID) == ["lot-1", "lot-2"])
+        #expect(entries.map(\.amount) == [1, 2])
     }
 }

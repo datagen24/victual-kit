@@ -21,7 +21,15 @@ struct CurrentUserTests {
 
     @Test("A rejected key is unauthorized")
     func rejectedKey() async {
-        let client = VictualClient.stubbed(StubTransport(status: 401, json: "{}"))
+        let client = VictualClient.stubbed(StubTransport(status: 401, json: #"{"error_message":"Unauthorized"}"#))
+        await #expect(throws: VictualError.unauthorized) { try await client.currentUserID() }
+    }
+
+    /// A 401 a reverse proxy answers has no `error_message` body, which the
+    /// 0.4.4 document declares; the status still decides the case.
+    @Test("A rejected key without the documented body is still unauthorized")
+    func rejectedKeyWithoutBody() async {
+        let client = VictualClient.stubbed(StubTransport(status: 401, json: ""))
         await #expect(throws: VictualError.unauthorized) { try await client.currentUserID() }
     }
 }

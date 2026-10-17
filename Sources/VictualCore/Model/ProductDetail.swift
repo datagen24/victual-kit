@@ -69,6 +69,12 @@ public struct ProductDetail: Hashable, Sendable, Identifiable {
     /// Where the stock actually is.
     public var location: StorageLocation?
     /// Where new stock lands when a purchase names no location.
+    ///
+    /// The server never sends this: 0.4.4 documents `default_location` as
+    /// deprecated and absent, and sends the product's default location as
+    /// `location`. It stays so the type does not change shape, and is `nil`
+    /// from ``init(_:)``; reading the deprecated field would only return that
+    /// `nil` at the cost of a deprecation warning.
     public var defaultLocation: StorageLocation?
 
     public var lastShoppingLocationID: Int?
@@ -158,7 +164,6 @@ extension ProductDetail {
             consumeQuantityUnit: schema.defaultQuantityUnitConsume.map(QuantityUnit.init),
             priceQuantityUnit: schema.quantityUnitPrice.map(QuantityUnit.init),
             location: schema.location.map(StorageLocation.init),
-            defaultLocation: schema.defaultLocation.map(StorageLocation.init),
             lastShoppingLocationID: schema.lastShoppingLocationId,
             averageShelfLifeDays: schema.averageShelfLifeDays,
             spoilRatePercent: schema.spoilRatePercent,

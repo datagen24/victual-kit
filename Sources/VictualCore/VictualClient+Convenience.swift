@@ -31,6 +31,12 @@ extension VictualClient {
                 )
             case .unauthorized:
                 throw VictualError.unauthorized
+            case .forbidden(let response):
+                throw VictualError.from(response)
+            case .internalServerError(let response):
+                throw VictualError.from(response)
+            case .serviceUnavailable(let response):
+                throw VictualError.from(response)
             case .undocumented(let statusCode, _):
                 throw VictualError.forStatus(statusCode)
             }
@@ -120,6 +126,12 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized:
                 throw VictualError.unauthorized
+            case .forbidden(let response):
+                throw VictualError.from(response)
+            case .internalServerError(let response):
+                throw VictualError.from(response)
+            case .serviceUnavailable(let response):
+                throw VictualError.from(response)
             case .undocumented(let statusCode, _):
                 throw VictualError.forStatus(statusCode)
             }

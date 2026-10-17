@@ -132,3 +132,9 @@ Scripts/replay-consumption-fixtures.py PATH/TO/victual/tests/fixtures/consumptio
 ```
 
 Add `--only 02,09b` to run some fixtures, or `--report out.json` for the full record.
+
+## Run 5 — v0.4.4 (OpenAPI 3.2)
+
+Vendored spec: upstream `f1247252311ccea9786b66b8cda3c6f1c537d5e9` (tag `v0.4.4`), sha256 `a73cdb65774b951d53fdfde4fce3e4adbf448dd14e982fb77abd8bb24465b0b4`. `info.version` 0.4.4, OpenAPI 3.2.0.
+
+Results: pending

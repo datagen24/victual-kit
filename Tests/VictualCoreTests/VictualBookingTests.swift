@@ -1,5 +1,6 @@
 import Foundation
 import HTTPTypes
+import OpenAPIRuntime
 import Testing
 import VictualTestSupport
 
@@ -105,6 +106,7 @@ struct BookingRequestBodyTests {
         #expect(sent.json["best_before_date"] as? String == "2026-01-31")
         #expect(sent.json["transaction_type"] as? String == "purchase")
         #expect(sent.json["price"] as? Double == 1.99)
+        #expect(sent.json["price"] is NSNumber)
         #expect(sent.json["location_id"] as? Int == 4)
         #expect(sent.json["shopping_location_id"] as? Int == 2)
         #expect(sent.json["stock_label_type"] as? Int == 3)
@@ -120,6 +122,7 @@ struct BookingRequestBodyTests {
         // Not zero, and not null: a purchase with no price recorded must not
         // claim the household paid nothing.
         #expect(sent.json["price"] == nil)
+        #expect(sent.json.keys.contains("price") == false)
         #expect(sent.json["best_before_date"] == nil)
     }
 
@@ -204,6 +207,59 @@ struct BookingRequestBodyTests {
         #expect(sent.json["stock_entry_id"] as? String == "lot-1")
     }
 
+    @Test("Every booking sends its amount as a JSON number")
+    func amountsAreNumbers() async throws {
+        // 0.4.4 lets each amount be a number or a numeric string. The wrappers
+        // must always pick the number: a fractional amount that went out as a
+        // string would be read by PHP's `is_numeric`, not by us.
+        let bookings: [(key: String, booking: (VictualClient) async throws -> Void)] = [
+            ("amount", { _ = try await $0.consume(productID: 7, amount: 0.25) }),
+            ("amount", { _ = try await $0.purchase(productID: 7, amount: 0.25) }),
+            ("amount", { _ = try await $0.open(productID: 7, amount: 0.25) }),
+            ("new_amount", { _ = try await $0.inventory(productID: 7, newAmount: 0.25) }),
+            (
+                "amount",
+                {
+                    _ = try await $0.transfer(
+                        productID: 7, amount: 0.25, fromLocationID: 1, toLocationID: 2
+                    )
+                }
+            ),
+        ]
+        for (key, booking) in bookings {
+            let sent = try await send(booking)
+            #expect(sent.json[key] is NSNumber, "\(sent.path) sent \(key) as \(String(describing: sent.json[key]))")
+            #expect(sent.json[key] as? Double == 0.25)
+        }
+    }
+
+    @Test("consume and purchase name their transaction type; inventory does not")
+    func transactionTypes() async throws {
+        let purchase = try await send { _ = try await $0.purchase(productID: 7, amount: 1) }
+        #expect(purchase.json["transaction_type"] as? String == "purchase")
+
+        let consume = try await send { _ = try await $0.consume(productID: 7, amount: 1) }
+        #expect(consume.json["transaction_type"] as? String == "consume")
+
+        // An inventory states a total and lets the server choose the kind, so
+        // it sends none.
+        let inventory = try await send { _ = try await $0.inventory(productID: 7, newAmount: 1) }
+        #expect(inventory.json["transaction_type"] == nil)
+    }
+
+    @Test("A price goes out as a number, and an absent one not at all")
+    func priceEncoding() async throws {
+        let priced = try await send {
+            _ = try await $0.inventory(productID: 7, newAmount: 2, price: 3.5)
+        }
+        #expect(priced.json["price"] is NSNumber)
+        #expect(priced.json["price"] as? Double == 3.5)
+
+        let unpriced = try await send { _ = try await $0.inventory(productID: 7, newAmount: 2) }
+        #expect(unpriced.json["price"] == nil)
+        #expect(unpriced.json.keys.contains("price") == false)
+    }
+
     @Test("undo addresses the transaction and sends no body")
     func undoRequest() async throws {
         let transport = StubTransport { _, _, _, _ in
@@ -249,7 +305,10 @@ struct BookingResultTests {
 
     @Test("A spoiled row reads back as spoiled")
     func spoiledFlagMapsToBool() async throws {
-        let json = #"[{"id": 1, "product_id": 7, "amount": -1, "spoiled": true, "transaction_id": "t"}]"#
+        let json = #"""
+            [{"id": 1, "product_id": 7, "amount": -1, "spoiled": true, "transaction_id": "t",
+              "transaction_type": "consume"}]
+            """#
         let client = VictualClient.stubbed(StubTransport(status: 200, json: json))
 
         let booking = try await client.consume(productID: 7, amount: 1, spoiled: true)
@@ -259,7 +318,7 @@ struct BookingResultTests {
 
     @Test("A booking with no transaction id is not offered for undo")
     func withoutTransactionID() async throws {
-        let json = #"[{"id": 1, "product_id": 7, "amount": -1}]"#
+        let json = #"[{"id": 1, "product_id": 7, "amount": -1, "transaction_type": "consume"}]"#
         let client = VictualClient.stubbed(StubTransport(status: 200, json: json))
 
         let booking = try await client.consume(productID: 7, amount: 1)
@@ -278,6 +337,36 @@ struct BookingResultTests {
 
         await #expect(throws: VictualError.forbidden) {
             _ = try await client.consume(productID: 7, amount: 1)
+        }
+    }
+
+    @Test("A 500 keeps the server's message")
+    func mapsServerError() async throws {
+        let client = VictualClient.stubbed(
+            StubTransport(status: 500, json: #"{"error_message":"x"}"#)
+        )
+
+        await #expect(throws: VictualError.serverError(statusCode: 500, message: "x")) {
+            _ = try await client.purchase(productID: 7, amount: 1)
+        }
+    }
+
+    @Test("A 503 from the schema gate maps to a message-less server error")
+    func mapsSchemaUnavailable() async throws {
+        // The gate answers in plain text, before routing.
+        let transport = StubTransport { _, _, _, _ in
+            (
+                HTTPResponse(status: .serviceUnavailable, headerFields: [.contentType: "text/plain"]),
+                HTTPBody("Database schema is out of date")
+            )
+        }
+        let client = VictualClient.stubbed(transport)
+
+        await #expect(throws: VictualError.serverError(statusCode: 503, message: nil)) {
+            _ = try await client.consume(productID: 7, amount: 1)
+        }
+        await #expect(throws: VictualError.serverError(statusCode: 503, message: nil)) {
+            try await client.undoTransaction(id: "tx-abc")
         }
     }
 }

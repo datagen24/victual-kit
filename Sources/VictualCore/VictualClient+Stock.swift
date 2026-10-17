@@ -26,6 +26,12 @@ extension VictualClient {
                 return try response.body.json.compactMap(StockSummary.init)
             case .unauthorized:
                 throw VictualError.unauthorized
+            case .forbidden(let response):
+                throw VictualError.from(response)
+            case .internalServerError(let response):
+                throw VictualError.from(response)
+            case .serviceUnavailable(let response):
+                throw VictualError.from(response)
             case .undocumented(let statusCode, _):
                 throw VictualError.forStatus(statusCode)
             }
@@ -54,6 +60,12 @@ extension VictualClient {
                 return VolatileStock(try response.body.json)
             case .unauthorized:
                 throw VictualError.unauthorized
+            case .forbidden(let response):
+                throw VictualError.from(response)
+            case .internalServerError(let response):
+                throw VictualError.from(response)
+            case .serviceUnavailable(let response):
+                throw VictualError.from(response)
             case .undocumented(let statusCode, _):
                 throw VictualError.forStatus(statusCode)
             }
@@ -78,6 +90,12 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized:
                 throw VictualError.unauthorized
+            case .forbidden(let response):
+                throw VictualError.from(response)
+            case .internalServerError(let response):
+                throw VictualError.from(response)
+            case .serviceUnavailable(let response):
+                throw VictualError.from(response)
             case .undocumented(let statusCode, _):
                 throw VictualError.forStatus(statusCode)
             }
@@ -111,11 +129,19 @@ extension VictualClient {
         } unwrap: { output in
             switch output {
             case .ok(let response):
-                return try response.body.json.map(StockEntry.init)
+                // Each item is `StockEntry` plus `priority` (the use order),
+                // which nothing here shows, so only the entry crosses over.
+                return try response.body.json.map { StockEntry($0.value1) }
             case .badRequest(let response):
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized:
                 throw VictualError.unauthorized
+            case .forbidden(let response):
+                throw VictualError.from(response)
+            case .internalServerError(let response):
+                throw VictualError.from(response)
+            case .serviceUnavailable(let response):
+                throw VictualError.from(response)
             case .undocumented(let statusCode, _):
                 throw VictualError.forStatus(statusCode)
             }
@@ -141,6 +167,12 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized:
                 throw VictualError.unauthorized
+            case .forbidden(let response):
+                throw VictualError.from(response)
+            case .internalServerError(let response):
+                throw VictualError.from(response)
+            case .serviceUnavailable(let response):
+                throw VictualError.from(response)
             case .undocumented(let statusCode, _):
                 throw VictualError.forStatus(statusCode)
             }
@@ -163,6 +195,12 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized:
                 throw VictualError.unauthorized
+            case .forbidden(let response):
+                throw VictualError.from(response)
+            case .internalServerError(let response):
+                throw VictualError.from(response)
+            case .serviceUnavailable(let response):
+                throw VictualError.from(response)
             case .undocumented(let statusCode, _):
                 throw VictualError.forStatus(statusCode)
             }
@@ -185,6 +223,12 @@ extension VictualClient {
                 return changed
             case .unauthorized:
                 throw VictualError.unauthorized
+            case .forbidden(let response):
+                throw VictualError.from(response)
+            case .internalServerError(let response):
+                throw VictualError.from(response)
+            case .serviceUnavailable(let response):
+                throw VictualError.from(response)
             case .undocumented(let statusCode, _):
                 throw VictualError.forStatus(statusCode)
             }
