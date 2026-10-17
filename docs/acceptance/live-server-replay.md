@@ -137,4 +137,32 @@ Add `--only 02,09b` to run some fixtures, or `--report out.json` for the full re
 
 Vendored spec: upstream `f1247252311ccea9786b66b8cda3c6f1c537d5e9` (tag `v0.4.4`), sha256 `a73cdb65774b951d53fdfde4fce3e4adbf448dd14e982fb77abd8bb24465b0b4`. `info.version` 0.4.4, OpenAPI 3.2.0.
 
-Results: pending
+Run on 2026-10-17 against the dev instance, which reports **0.4.3** (PostgreSQL 16.15, db
+version 312). The 0.4.3 and 0.4.4 server documents differ only in `info.version`, so this
+instance serves the vendored contract. The key belonged to a role-limited household member
+(`Adult-Test`), not an administrator.
+
+**Served document.** It matches the vendored upstream copy except for the fields that vary at
+runtime: `servers[0].url`, `info.version` and `info.description`, and the instance-specific
+`ExposedEntity_*` enums and their descriptions.
+
+**Client against the instance.** A scratch executable linked `VictualCore` and `VictualHealth`
+from this branch and called the instance through the real client.
+
+| Call | Result |
+| --- | --- |
+| `systemInfo` (0.4.3, not newer than supported) | PASS |
+| `currentUserID`, `capabilities` | PASS |
+| `currentStock` (147 rows), `volatileStock` | PASS |
+| `quantityUnits`, `locations`, `productGroups`, `products` (188) | PASS |
+| `productDetail`, `stockEntries` (product 19) | PASS |
+| `databaseChangedTime` | PASS |
+| `VictualRefillService.refills`, `.notices` | PASS |
+| `purchase` of 1 at price 1.25: one row, typed `purchase`, price 1.25 read back | PASS |
+| `undoTransaction` of that purchase | PASS |
+
+**Fixture replay** (`Scripts/replay-consumption-fixtures.py`): 1 PASS (`00-capabilities`),
+25 ERROR, 2 BLOCKED. Every error is the same seeding refusal,
+`403 Permission missing: MASTER_DATA_ADD`: this key cannot create the fixtures' locations. That
+is a property of the key, not of the client. The two BLOCKED fixtures (16, 17) need a second
+user's key. Rerun the replay with an administrator key to cover the event fixtures.
