@@ -161,8 +161,8 @@ from this branch and called the instance through the real client.
 | `purchase` of 1 at price 1.25: one row, typed `purchase`, price 1.25 read back | PASS |
 | `undoTransaction` of that purchase | PASS |
 
-**Fixture replay** (`Scripts/replay-consumption-fixtures.py`): 1 PASS (`00-capabilities`),
-25 ERROR, 2 BLOCKED. Every error is the same seeding refusal,
-`403 Permission missing: MASTER_DATA_ADD`: this key cannot create the fixtures' locations. That
-is a property of the key, not of the client. The two BLOCKED fixtures (16, 17) need a second
-user's key. Rerun the replay with an administrator key to cover the event fixtures.
+**Fixture replay** (`Scripts/replay-consumption-fixtures.py`): **28/28 PASS** (run `846a`), with
+an administrator key as the primary actor and the `Adult-Test` key as the second user, `bob`, for
+fixtures 16 and 17. An earlier attempt with only the `Adult-Test` key stopped 25 fixtures at
+seeding with `403 Permission missing: MASTER_DATA_ADD`. That key cannot create the fixtures'
+locations, which is a property of the key and not of the client.
