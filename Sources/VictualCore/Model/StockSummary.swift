@@ -89,8 +89,9 @@ extension StockSummary {
             // Straight across, deliberately: absent stays absent.
             value: schema.value,
             nextDueDate: VictualDates.day(schema.bestBeforeDate),
-            // Another `integer` 0/1 the document called `boolean`; the server
-            // assigns it as a bare number. Repaired in the spec normalizer.
+            // A real boolean as of 0.4.4 (issue #230); older servers sent a
+            // bare 0/1 here, which the spec normalizer used to retype and no
+            // longer does.
             isAggregatedAmount: schema.isAggregatedAmount ?? false,
             product: schema.product.flatMap(ProductSummary.init)
         )

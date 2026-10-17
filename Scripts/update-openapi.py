@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 UPSTREAM_REPO = "datagen24/victual"
 # A release tag, so the vendored document is reproducible. Move it deliberately when a new
 # release is adopted; track `master` only while a release is still being cut.
-UPSTREAM_REF = "v0.4.0"
+UPSTREAM_REF = "v0.4.4"
 UPSTREAM_PATH = "victual.openapi.json"
 UPSTREAM_URL = (
     f"https://raw.githubusercontent.com/{UPSTREAM_REPO}/{UPSTREAM_REF}/{UPSTREAM_PATH}"
@@ -212,6 +212,58 @@ def normalize_composition(node: object) -> int:
     return fixed
 
 
+def drop_null_union_members(node: object, path: str = "") -> list[str]:
+    """Drop the `{"type": "null"}` member, and its `{"const": ""}` alias, from a
+    `oneOf` or `anyOf` on an optional property.
+
+    The generator cannot model a null member inside a union. It skips the
+    member, and when the union has more than one other member it skips the whole
+    property: the purchase and inventory bodies lose `price`, and the refill
+    state loses `current_fill` and `open_order`. On an optional property the
+    null member adds nothing the Swift optional does not already say: a null or
+    absent value decodes as `nil`, and `nil` is not sent. The `""` alias of a
+    request field means the same as null and nothing here sends it. A required
+    property is left alone, since dropping null there would refuse a value the
+    server sends.
+
+    What is lost is the ability to send an explicit `null` through a generated
+    type. Three request fields give null a meaning of their own:
+    `RefillSettingsUpdate.rule`, and `PUT /stock/entry`'s `price` and
+    `shopping_location_id`, where null clears the stored value and omission
+    keeps it. None is called through the generated client; a wrapper that needs
+    to clear one must send that request raw.
+    """
+    dropped: list[str] = []
+    if isinstance(node, dict):
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            required = set(node.get("required", []))
+            for name, prop in properties.items():
+                if name in required or not isinstance(prop, dict):
+                    continue
+                for keyword in ("oneOf", "anyOf"):
+                    members = prop.get(keyword)
+                    if not isinstance(members, list):
+                        continue
+                    if not any(m == {"type": "null"} for m in members):
+                        continue
+                    kept = [m for m in members if m not in ({"type": "null"}, {"const": ""})]
+                    if not kept:
+                        continue
+                    if len(kept) == 1:
+                        del prop[keyword]
+                        prop.update({k: v for k, v in kept[0].items() if k not in prop})
+                    else:
+                        prop[keyword] = kept
+                    dropped.append(f"{path}/{name}")
+        for key, value in node.items():
+            dropped += drop_null_union_members(value, f"{path}/{key}" if path else key)
+    elif isinstance(node, list):
+        for value in node:
+            dropped += drop_null_union_members(value, path)
+    return dropped
+
+
 def resolve_pointer(document: dict, ref: str) -> bool:
     """Whether a local JSON pointer resolves inside `document`."""
     if not ref.startswith("#/"):
@@ -304,79 +356,6 @@ def retype_integer_flags(document: dict) -> list[str]:
     return retyped
 
 
-# Transaction types the server writes that the document's `StockTransactionType` leaves
-# out, in the order the server's `StockService` declares them.
-#
-# The enum lists four values, but a transfer writes `transfer_from` and `transfer_to`, and
-# a stock edit, a measurement and a self-production write the rest. The generated decoder
-# refuses an unlisted value, so a transfer succeeded on the server and then failed to
-# decode its own response. Confirmed against `services/StockService.php` and a live 0.4.0
-# transfer. Widening the enum asserts nothing the server does not already send.
-MISSING_TRANSACTION_TYPES = [
-    "self-production",
-    "stock-edit-new",
-    "stock-edit-old",
-    "stock-measured-new",
-    "stock-measured-old",
-    "transfer_from",
-    "transfer_to",
-]
-
-
-def widen_transaction_types(document: dict) -> list[str]:
-    """Adds the transaction types the server sends but the document omits."""
-    schema = document.get("components", {}).get("schemas", {}).get("StockTransactionType")
-    if not isinstance(schema, dict) or not isinstance(schema.get("enum"), list):
-        return []
-    added = [value for value in MISSING_TRANSACTION_TYPES if value not in schema["enum"]]
-    schema["enum"].extend(added)
-    return added
-
-
-def embed_product_in_missing_products(document: dict) -> bool:
-    """Documents the `product` the server embeds in each below-minimum entry.
-
-    `GET /stock/volatile` sends each `missing_products` entry with its full
-    product, as `GET /stock` does, but the document lists only four fields. The
-    product carries the stock unit, which is what lets a product with no stock
-    row at all be shown with its unit. Same schema `GET /stock` already uses.
-    """
-    schemas = document.get("components", {}).get("schemas", {})
-    items = (
-        schemas.get("CurrentVolatilStockResponse", {})
-        .get("properties", {})
-        .get("missing_products", {})
-        .get("items")
-    )
-    if not isinstance(items, dict) or "product" in items.get("properties", {}):
-        return False
-    items.setdefault("properties", {})["product"] = {
-        "$ref": "#/components/schemas/ProductWithoutUserfields"
-    }
-    return True
-
-
-def add_aggregated_product_amounts(document: dict) -> list[str]:
-    """Documents the aggregated amounts `GET /stock/products/{id}` sends.
-
-    A parent product reports its own stock in `stock_amount` and its own plus
-    its sub-products' in `stock_amount_aggregated`; the document lists only the
-    first, though the server fills both (confirmed against a live 0.4.0
-    instance). Without them a parent reads `0` on its detail screen while its
-    sub-products hold stock.
-    """
-    schema = document.get("components", {}).get("schemas", {}).get("ProductDetailsResponse")
-    if not isinstance(schema, dict):
-        return []
-    properties = schema.setdefault("properties", {})
-    added = []
-    for name in ("stock_amount_aggregated", "stock_amount_opened_aggregated"):
-        if name not in properties:
-            properties[name] = {"type": "number"}
-            added.append(name)
-    return added
-
-
 def lint(document: dict) -> list[str]:
     """Report upstream modelling mistakes that are left in place deliberately.
 
@@ -417,9 +396,7 @@ def normalize(raw: bytes, overrides: dict[str, str]) -> tuple[dict, dict]:
     repaired = repair_dangling_refs(document)
     report["danglingRefsRepaired"] = repaired
     report["integerFlagsRetyped"] = retype_integer_flags(document)
-    report["transactionTypesAdded"] = widen_transaction_types(document)
-    report["aggregatedProductAmountsAdded"] = add_aggregated_product_amounts(document)
-    report["missingProductsEmbedProduct"] = embed_product_in_missing_products(document)
+    report["nullUnionMembersDropped"] = drop_null_union_members(document)
 
     document["servers"] = [{"url": SERVER_URL, "description": SERVER_DESCRIPTION}]
     report["serverPlaceholderReplaced"] = True

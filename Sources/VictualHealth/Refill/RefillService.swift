@@ -1,4 +1,5 @@
 import Foundation
+import VictualAPI
 import VictualCore
 
 /// What the refill store reads. ``VictualRefillService`` is the real one.
@@ -31,14 +32,14 @@ public struct VictualRefillService: RefillSource {
     public func refills(asOf: CalendarDay) async throws -> [RefillItem] {
         let response = try await client.send(
             .get, path: "/refills", query: [("as_of", asOf.description)], operationID: "getRefills")
-        let list = try Self.decode(RefillListWire.self, response.data)
+        let list = try client.decode(RefillListWire.self, from: response.data)
         return try Self.adapt { try (list.refills ?? []).map(RefillItem.init(wire:)) }
     }
 
     public func notices(asOf: CalendarDay) async throws -> [RefillNotice] {
         let response = try await client.send(
             .get, path: "/refills/notices", query: [("as_of", asOf.description)], operationID: "getRefillsNotices")
-        let list = try Self.decode(RefillNoticeListWire.self, response.data)
+        let list = try client.decode(RefillNoticeListWire.self, from: response.data)
         return try Self.adapt { try (list.notices ?? []).map(RefillNotice.init(wire:)) }
     }
 
@@ -51,12 +52,14 @@ public struct VictualRefillService: RefillSource {
         let response = try await client.send(
             .get, path: "/consumption/recipes/\(recipeID)/refill", query: [("as_of", asOf.description)],
             operationID: "getConsumptionRecipesByRecipeIdRefill")
-        let wire = try Self.decode(RefillWire.self, response.data)
-        return (wire.fills ?? []).compactMap(RefillFillRecord.init(wire:))
+        // Only `fills` is read, so the detail's own frozen enums (`status`, `as_of_source`)
+        // are not decoded here.
+        let history = try client.decode(FillHistory.self, from: response.data)
+        return (history.fills ?? []).compactMap(RefillFillRecord.init(wire:))
     }
 
-    private static func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
-        do { return try JSONDecoder().decode(type, from: data) } catch { throw VictualError.decodingFailed(underlying: error) }
+    private struct FillHistory: Decodable {
+        var fills: [Components.Schemas.RefillFill]?
     }
 
     private static func adapt<T>(_ work: () throws -> T) throws -> T {

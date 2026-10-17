@@ -27,7 +27,7 @@ public struct VictualMappingCatalog: MappingCatalog {
     }
 
     public func recipes() async throws -> [CatalogItem] {
-        let response = try await client.send(.get, path: "/consumption/recipes", operationID: "listConsumptionRecipes")
+        let response = try await client.send(.get, path: "/consumption/recipes", operationID: "getConsumptionRecipes")
         let recipes = try client.decode([Components.Schemas.ConsumptionRecipeSummary].self, from: response.data)
         return recipes.compactMap { recipe in
             guard let id = recipe.id, let name = recipe.name, recipe.rights?.consume != false else { return nil }

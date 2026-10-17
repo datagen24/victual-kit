@@ -12,6 +12,12 @@ import VictualAPI
 /// answers `403` without it. Asking ``capabilities()`` first lets a user
 /// interface disable a control and say why, but it does not remove the need to
 /// handle that `403`: a key's permissions can change between the two requests.
+///
+/// Amounts and prices always go on the wire as JSON numbers. Since 0.4.4 the
+/// API also takes a numeric string for each; these wrappers hold a `Double`
+/// and never use that branch, because a string is read through PHP's
+/// `is_numeric` and its edge cases are the server's, not ours. A missing
+/// price is omitted, never sent as `0` or `""`.
 extension VictualClient {
     /// Removes an amount of a product from stock.
     ///
@@ -44,7 +50,7 @@ extension VictualClient {
                     path: .init(productId: productID),
                     body: .json(
                         .init(
-                            amount: amount,
+                            amount: .case1(amount),
                             transactionType: .consume,
                             spoiled: spoiled,
                             stockEntryId: stockEntryID,
@@ -62,6 +68,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .internalServerError(let response): throw VictualError.from(response)
+            case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
             }
         }
@@ -93,10 +101,10 @@ extension VictualClient {
                     path: .init(productId: productID),
                     body: .json(
                         .init(
-                            amount: amount,
+                            amount: .case1(amount),
                             bestBeforeDate: bestBeforeDate.map(VictualDates.string(fromDay:)),
                             transactionType: .purchase,
-                            price: price,
+                            price: price.map { .case1($0) },
                             locationId: locationID,
                             shoppingLocationId: shoppingLocationID,
                             stockLabelType: stockLabelType?.rawValue,
@@ -112,6 +120,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .internalServerError(let response): throw VictualError.from(response)
+            case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
             }
         }
@@ -156,7 +166,7 @@ extension VictualClient {
                     path: .init(productId: productID),
                     body: .json(
                         .init(
-                            amount: amount,
+                            amount: .case1(amount),
                             stockEntryId: stockEntryID,
                             allowSubproductSubstitution: allowSubproductSubstitution,
                             measurement: measurement.map {
@@ -178,6 +188,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .internalServerError(let response): throw VictualError.from(response)
+            case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
             }
         }
@@ -204,11 +216,11 @@ extension VictualClient {
                     path: .init(productId: productID),
                     body: .json(
                         .init(
-                            newAmount: newAmount,
+                            newAmount: .case1(newAmount),
                             bestBeforeDate: bestBeforeDate.map(VictualDates.string(fromDay:)),
                             shoppingLocationId: shoppingLocationID,
                             locationId: locationID,
-                            price: price,
+                            price: price.map { .case1($0) },
                             stockLabelType: stockLabelType?.rawValue,
                             note: note
                         )
@@ -222,6 +234,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .internalServerError(let response): throw VictualError.from(response)
+            case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
             }
         }
@@ -249,7 +263,7 @@ extension VictualClient {
                     path: .init(productId: productID),
                     body: .json(
                         .init(
-                            amount: amount,
+                            amount: .case1(amount),
                             locationIdFrom: fromLocationID,
                             locationIdTo: toLocationID,
                             stockEntryId: stockEntryID
@@ -264,6 +278,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .internalServerError(let response): throw VictualError.from(response)
+            case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
             }
         }
@@ -286,6 +302,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .internalServerError(let response): throw VictualError.from(response)
+            case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
             }
         }

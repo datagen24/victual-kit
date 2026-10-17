@@ -60,7 +60,9 @@ struct VictualClientTests {
 
     @Test("Maps an undocumented server status to .serverError")
     func mapsServerError() async throws {
-        let client = VictualClient.stubbed(StubTransport(status: 503, json: "{}"))
+        // 502 is not in the document; the shared 500 and 503 are, and are
+        // covered by the shared error response tests.
+        let client = VictualClient.stubbed(StubTransport(status: 502, json: "{}"))
 
         let error = await #expect(throws: VictualError.self) {
             try await client.systemInfo()
@@ -69,7 +71,7 @@ struct VictualClientTests {
             Issue.record("expected .serverError, got \(String(describing: error))")
             return
         }
-        #expect(statusCode == 503)
+        #expect(statusCode == 502)
     }
 
     @Test("Maps an unreachable host to .transportFailed")

@@ -44,7 +44,7 @@ struct BookingControllerTests {
     @Test("A booking the server returned without a transaction is not undoable")
     func withoutTransactionNoUndo() async {
         var table = RouteTable()
-        table.booking = #"[{"id":1,"product_id":7,"amount":-1}]"#
+        table.booking = #"[{"id":1,"product_id":7,"amount":-1,"transaction_type":"consume"}]"#
         let (client, _) = testClient(table)
         let controller = BookingController(client: client)
 
