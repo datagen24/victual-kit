@@ -90,18 +90,8 @@ private struct MainTabs: View {
         .sheet(item: Bindable(workspace).presentedBooking) { presentation in
             BookingForm(presentation: presentation, workspace: workspace)
         }
-        .alert(
-            "That did not work",
-            isPresented: Binding(
-                // While a booking form is up, the form reports its own errors.
-                get: { workspace.bookings.error != nil && workspace.presentedBooking == nil },
-                set: { if !$0 { workspace.bookings.clearError() } }
-            )
-        ) {
-            Button("OK", role: .cancel) { workspace.bookings.clearError() }
-        } message: {
-            Text(workspace.bookings.error?.errorDescription ?? "")
-        }
+        // While a booking form is up, the form reports its own errors.
+        .bookingErrorAlert(workspace: workspace, isSuppressed: workspace.presentedBooking != nil)
     }
 
     /// Says so when the API key could not be saved.

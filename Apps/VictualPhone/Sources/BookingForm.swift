@@ -105,17 +105,10 @@ struct BookingForm: View {
         .interactiveDismissDisabled(isCommitting)
         // Shown here rather than by the tabs: a presenter with this sheet up
         // cannot show an alert of its own.
-        .alert(
-            "That did not work",
-            isPresented: Binding(
-                get: { workspace.bookings.error != nil },
-                set: { if !$0 { workspace.bookings.clearError() } }
-            )
-        ) {
-            Button("OK", role: .cancel) { workspace.bookings.clearError() }
-        } message: {
-            Text(workspace.bookings.error?.errorDescription ?? "")
-        }
+        // Suppressed while committing: a booking that may have landed closes
+        // the form with isCommitting still set, and its alert, with any retry,
+        // belongs to the root view once the form has gone.
+        .bookingErrorAlert(workspace: workspace, isSuppressed: isCommitting)
     }
 
     @ViewBuilder
@@ -174,13 +167,26 @@ struct BookingForm: View {
         Task {
             if await workspace.perform(request) {
                 dismiss()
-            } else if workspace.bookings.error?.isOutcomeUnknown == true {
-                // It may have gone through. Close the form so it cannot be sent
-                // again blind; the alert explains, and the stock was refreshed.
+            } else if workspace.bookings.error?.leavesBookingUnsettled == true {
+                // It may have gone through, or may yet. Close the form so it
+                // cannot be edited and sent again under a new key; the alert
+                // explains, offers the safe retry where there is one, and the
+                // stock was refreshed.
                 dismiss()
             } else {
                 isCommitting = false
             }
+        }
+    }
+}
+
+private extension VictualError {
+    /// Whether the booking that failed may still have been recorded, or its key
+    /// is spent: either way the draft must not go out again as it stands.
+    var leavesBookingUnsettled: Bool {
+        switch self {
+        case .outcomeUnknown, .idempotencyInProgress, .idempotencyConflict: true
+        default: false
         }
     }
 }
