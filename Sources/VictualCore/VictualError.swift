@@ -38,12 +38,30 @@ public enum VictualError: Error, Sendable {
     /// A write was sent and the server did not answer in time, or the connection
     /// dropped while waiting.
     ///
-    /// The booking may have been recorded. Treat it as neither done nor failed:
-    /// do not send it again. The server offers nothing to ask "did this one
-    /// happen" — a stock booking carries no idempotency key and no
-    /// client-supplied transaction id — so the answer is in the stock and its
-    /// history, which a screen should refresh.
+    /// The booking may have been recorded. Treat it as neither done nor failed.
+    ///
+    /// Sending it again is safe only with the same ``StockBookingKey``, the same
+    /// contents, a server whose ``StockBookingIdempotency`` protects the
+    /// operation, and inside its retention counted from the first attempt: the
+    /// server then answers with the original booking rather than booking again.
+    /// Otherwise do not send it again — a new key, or a server that ignores
+    /// keys, books twice — and find the answer in the stock and its history,
+    /// which a screen should refresh.
     case outcomeUnknown(underlying: any Error)
+
+    /// The server already holds this ``StockBookingKey`` for a booking with
+    /// different contents (`409 idempotency_conflict`).
+    ///
+    /// A client defect: nothing was booked by this request, and nothing says
+    /// whether the earlier one was. Do not send it again.
+    case idempotencyConflict(message: String?)
+
+    /// The server is still working on an earlier request with this
+    /// ``StockBookingKey`` (`409 idempotency_in_progress`).
+    ///
+    /// Nothing was booked by this request. Retry later with the same key and
+    /// the same contents — never a new key, which would book a second time.
+    case idempotencyInProgress(message: String?)
 
     /// Maps a failure of a *write* onto this type.
     ///
@@ -115,13 +133,16 @@ public enum VictualError: Error, Sendable {
     /// Whether retrying the identical request could plausibly succeed.
     ///
     /// Authentication and validation failures are excluded: they need the user
-    /// to change something first.
+    /// to change something first. ``idempotencyInProgress(message:)`` is
+    /// included, but "identical" there includes the key.
+    /// ``outcomeUnknown(underlying:)`` is not: whether it may be retried
+    /// depends on the key and the server, which the error cannot see.
     public var isRetryable: Bool {
         switch self {
-        case .transportFailed, .serverError:
+        case .transportFailed, .serverError, .idempotencyInProgress:
             return true
         case .invalidServerURL, .outcomeUnknown, .unauthorized, .forbidden, .notFound, .badRequest,
-            .unexpectedStatus, .decodingFailed:
+            .unexpectedStatus, .decodingFailed, .idempotencyConflict:
             return false
         }
     }
@@ -150,6 +171,10 @@ extension VictualError: LocalizedError {
             return "Could not reach the server: \(underlying.localizedDescription)"
         case .outcomeUnknown:
             return "The server did not answer in time, so it is not known whether that was recorded. Stock has been refreshed. Check it before trying again."
+        case .idempotencyConflict(let message):
+            return message ?? "The server already recorded a different booking under this request's key, so nothing was booked."
+        case .idempotencyInProgress(let message):
+            return message ?? "The server is still recording this booking. Try again in a moment."
         }
     }
 }
@@ -169,7 +194,9 @@ extension VictualError: Equatable {
             (.forbidden, .forbidden),
             (.notFound, .notFound):
             return true
-        case (.badRequest(let a), .badRequest(let b)):
+        case (.badRequest(let a), .badRequest(let b)),
+            (.idempotencyConflict(let a), .idempotencyConflict(let b)),
+            (.idempotencyInProgress(let a), .idempotencyInProgress(let b)):
             return a == b
         case (.serverError(let aCode, let aMessage), .serverError(let bCode, let bMessage)):
             return aCode == bCode && aMessage == bMessage

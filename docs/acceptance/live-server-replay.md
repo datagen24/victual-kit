@@ -166,3 +166,45 @@ an administrator key as the primary actor and the `Adult-Test` key as the second
 fixtures 16 and 17. An earlier attempt with only the `Adult-Test` key stopped 25 fixtures at
 seeding with `403 Permission missing: MASTER_DATA_ADD`. That key cannot create the fixtures'
 locations, which is a property of the key and not of the client.
+
+## Run 7 — v0.5.0
+
+Vendored spec: tag `v0.5.0`, upstream commit `17f9f000b317e41d50b215afee2fef072d4f16b5`, sha256
+`490bcc7d56e9072edbe6053e4aba34dc0409bb2efd14ac2b770baa770e575e89` (from `openapi/spec-lock.json`).
+`info.version` 0.5.0, OpenAPI 3.2.0.
+
+Run on 2026-10-19 against the dev instance, which reports **0.5.0** (release date 2026-10-19, db
+version 318) and advertises `stock_booking_idempotency` for purchase, consume, transfer, open and
+inventory, with a retention of 604800 seconds.
+
+**Served document.** Its paths and every non-runtime schema match the vendored upstream copy. The
+comparison left out `servers`, `info.version`, `info.description` and the `ExposedEntity_*` enums.
+
+**Client against the instance.** A scratch executable linked `VictualCore` from this branch and
+used the administrator key.
+
+| Call | Result |
+| --- | --- |
+| `systemInfo` (0.5.0, not newer than supported) | PASS |
+| `currentUserID`, `capabilities` | PASS |
+| `currentStock`: 244 rows, `value_incomplete` decoded on every row, true on 229 | PASS |
+| `productDetail` (product 266): `stockValue` 0, `stock_value_incomplete` true | PASS |
+| `stockEntries` (product 266) | PASS |
+| `purchase` of 1 at price 0: one row, price 0 read back as a known zero (ADR-0045), 32-character transaction id (ADR-0046) | PASS |
+| `undoTransaction` of that purchase | PASS |
+
+Most of this household's stock has no recorded price. On 0.5.0 its values are partial sums and are
+marked that way. Before 0.5.0 an unpriced entry counted as 0.
+
+**Consumption-event fixtures** (`Scripts/replay-consumption-fixtures.py`): **28/28 PASS** (run
+`041f`). The administrator key was `alice` and the `Adult-Test` key was `bob`. The first attempt
+(run `0381`) stopped fixture 11 in the runner, not on the server. In 0.5.0, fixture 11's `save` picks
+a row from the unordered booking list with `{"match": {...}, "field": "id"}` rather than taking
+`0.id`, and the runner now supports that form.
+
+**Refill fixtures** (`tests/fixtures/consumption-refill`, using the runner from the
+`acceptance/live-replay` branch, which adds recipe seeding): **11/11 PASS** (run `048c`). As in
+Run 6, `alice` was the administrator, `bob` was `Child-Test` and `carol` was `Adult-Test`.
+
+Not covered: the client does not send `Idempotency-Key` yet, so the idempotent replay and its 409
+responses were not exercised.

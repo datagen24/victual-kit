@@ -135,6 +135,16 @@ UI actually has to distinguish (`.unauthorized`, `.forbidden`, `.notFound`,
 `Equatable` and `LocalizedError`, and `isRetryable` marks the cases where
 retrying the identical request could plausibly work.
 
+A booking that times out is `.outcomeUnknown`: it may have been recorded. Each
+booking takes an optional `StockBookingKey`, sent as `Idempotency-Key` only when
+`GET /system/info` publishes `stock_booking_idempotency` for that operation
+(Victual 0.5.0, ADR-0046). Sent again under the same key and contents within the
+published retention, the server answers with the original booking
+(`StockBooking.isReplayed`) instead of booking twice. `BookingController` keeps
+one key per intended booking and offers `retryLast()` only when all of that
+holds. A `409` is `.idempotencyConflict` (a client defect; stop) or
+`.idempotencyInProgress` (retry later with the same key).
+
 ## Credentials
 
 API keys go in the Keychain. `VictualSession` stores and removes them:

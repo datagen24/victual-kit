@@ -19,6 +19,14 @@ public struct StockBooking: Hashable, Sendable {
     /// The log rows the booking wrote, in the order the server returned them.
     public var rows: [StockLogRow]
 
+    /// What the server's `Idempotent-Replayed` header said.
+    ///
+    /// `true`: this repeats an earlier booking made with the same
+    /// ``StockBookingKey``; nothing was booked a second time, and the rows are
+    /// as they stand now — possibly undone since. `false`: the server honoured
+    /// the key and booked. `nil`: no key was sent, or the server ignored it.
+    public var isReplayed: Bool?
+
     /// Whether this booking can be offered for undo.
     public var isUndoable: Bool { transactionID != nil && !rows.isEmpty }
 
@@ -31,9 +39,10 @@ public struct StockBooking: Hashable, Sendable {
         return ids.count == 1 ? ids.first : nil
     }
 
-    public init(transactionID: String? = nil, rows: [StockLogRow] = []) {
+    public init(transactionID: String? = nil, rows: [StockLogRow] = [], isReplayed: Bool? = nil) {
         self.transactionID = transactionID
         self.rows = rows
+        self.isReplayed = isReplayed
     }
 }
 

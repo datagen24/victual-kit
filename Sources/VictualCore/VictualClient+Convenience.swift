@@ -23,11 +23,14 @@ extension VictualClient {
             switch output {
             case .ok(let response):
                 let payload = try response.body.json
+                let idempotency = payload.stockBookingIdempotency.map(StockBookingIdempotency.init)
+                bookingIdempotency.value = .some(idempotency)
                 return SystemInformation(
                     victualVersion: payload.victualVersion?.version,
                     releaseDate: payload.victualVersion?.releaseDate,
                     phpVersion: payload.phpVersion,
-                    databaseEngine: payload.databaseEngine
+                    databaseEngine: payload.databaseEngine,
+                    stockBookingIdempotency: idempotency
                 )
             case .unauthorized:
                 throw VictualError.unauthorized
@@ -186,16 +189,23 @@ public struct SystemInformation: Hashable, Sendable {
     /// `"PostgreSQL 16.10"`.
     public var databaseEngine: String?
 
+    /// Whether the instance honours a ``StockBookingKey``. `nil` for a server
+    /// that does not publish `stock_booking_idempotency`, which includes every
+    /// release before 0.5.0.
+    public var stockBookingIdempotency: StockBookingIdempotency?
+
     public init(
         victualVersion: String? = nil,
         releaseDate: String? = nil,
         phpVersion: String? = nil,
-        databaseEngine: String? = nil
+        databaseEngine: String? = nil,
+        stockBookingIdempotency: StockBookingIdempotency? = nil
     ) {
         self.victualVersion = victualVersion
         self.releaseDate = releaseDate
         self.phpVersion = phpVersion
         self.databaseEngine = databaseEngine
+        self.stockBookingIdempotency = stockBookingIdempotency
     }
 }
 

@@ -84,6 +84,16 @@ final class PhoneWorkspace {
         return succeeded
     }
 
+    /// Sends the last booking again under its original key, then refreshes as
+    /// ``perform(_:)`` does. Does nothing unless ``BookingController/canRetryLast``.
+    @discardableResult
+    func retryLastBooking() async -> Bool {
+        let succeeded = await bookings.retryLast()
+        scanner.refresh()
+        await stock.refresh()
+        return succeeded
+    }
+
     func undoLastBooking() async {
         await bookings.undoLast()
         scanner.refresh()

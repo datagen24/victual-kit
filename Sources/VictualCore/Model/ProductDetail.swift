@@ -49,6 +49,10 @@ public struct ProductDetail: Hashable, Sendable, Identifiable {
 
     /// The value of the stock held, or `nil` without `STOCK_PRICES_VIEW`.
     public var stockValue: Double?
+    /// Whether some of the stock held has no known price, so ``stockValue``
+    /// sums the priced entries only. `nil` whenever ``stockValue`` is, and from
+    /// a server older than 0.5.0, which counted an unpriced entry as 0.
+    public var isStockValueIncomplete: Bool?
     /// The price of the most recent purchase, or `nil` without the permission.
     public var lastPrice: Double?
     /// The average price across stock currently held, or `nil` without it.
@@ -94,6 +98,7 @@ public struct ProductDetail: Hashable, Sendable, Identifiable {
         stockAmountOpenedAggregated: Double? = nil,
         isAggregatedAmount: Bool = false,
         stockValue: Double? = nil,
+        isStockValueIncomplete: Bool? = nil,
         lastPrice: Double? = nil,
         averagePrice: Double? = nil,
         currentPrice: Double? = nil,
@@ -119,6 +124,7 @@ public struct ProductDetail: Hashable, Sendable, Identifiable {
         self.stockAmountOpenedAggregated = stockAmountOpenedAggregated
         self.isAggregatedAmount = isAggregatedAmount
         self.stockValue = stockValue
+        self.isStockValueIncomplete = isStockValueIncomplete
         self.lastPrice = lastPrice
         self.averagePrice = averagePrice
         self.currentPrice = currentPrice
@@ -153,6 +159,7 @@ extension ProductDetail {
             isAggregatedAmount: schema.isAggregatedAmount ?? false,
             // The four price fields cross straight over: absent stays absent.
             stockValue: schema.stockValue,
+            isStockValueIncomplete: schema.stockValueIncomplete,
             lastPrice: schema.lastPrice,
             averagePrice: schema.avgPrice,
             currentPrice: schema.currentPrice,

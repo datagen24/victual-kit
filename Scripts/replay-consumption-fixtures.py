@@ -160,6 +160,19 @@ def dotted(value, path: str):
     return value
 
 
+def picked(value, where):
+    """A `save` source: a dotted path, or (since 0.5.0's fixtures) `{"match": {...}, "field": F}`,
+    which selects the one row of an unordered list whose listed keys all match."""
+    if isinstance(where, str):
+        return dotted(value, where)
+    if not isinstance(value, list):
+        raise TypeError(f"match needs a list, got {type(value).__name__}")
+    rows = [row for row in value if isinstance(row, dict) and not subset(where["match"], row)]
+    if len(rows) != 1:
+        raise ValueError(f"match selected {len(rows)} rows, expected exactly 1")
+    return dotted(rows[0], where["field"])
+
+
 def subset(expected, actual, where="") -> list[str]:
     """Differences, per the fixtures' README: objects match on listed keys, lists element-wise."""
     if expected == "{{any}}":
@@ -295,9 +308,9 @@ def run_fixture(client: Client, path: Path, run: str) -> dict:
                 problems.append(f"count at '{where}': expected {count}, got {got}")
         for name, where in step.get("save", {}).items():
             try:
-                world.saved[name] = dotted(body, where)
-            except (KeyError, IndexError, TypeError, ValueError):
-                problems.append(f"save '{name}': no value at '{where}'")
+                world.saved[name] = picked(body, world.substitute(where))
+            except (KeyError, IndexError, TypeError, ValueError) as error:
+                problems.append(f"save '{name}': no value at '{where}' ({error})")
         stock: dict[str, float] = {}
         for name, want in step.get("stock", {}).items():
             got = read_stock(client, world, name)

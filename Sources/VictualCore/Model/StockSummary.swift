@@ -35,6 +35,11 @@ public struct StockSummary: Hashable, Sendable, Identifiable {
     /// may not see prices. Never zero-filled — see the type's discussion.
     public var value: Double?
 
+    /// Whether some of this product's stock has no known price, so ``value``
+    /// sums the priced entries only. `nil` whenever ``value`` is, and from a
+    /// server older than 0.5.0, which counted an unpriced entry as 0.
+    public var isValueIncomplete: Bool?
+
     /// The next date any of this product's stock is due.
     public var nextDueDate: Date?
 
@@ -59,6 +64,7 @@ public struct StockSummary: Hashable, Sendable, Identifiable {
         amountOpened: Double = 0,
         amountOpenedAggregated: Double? = nil,
         value: Double? = nil,
+        isValueIncomplete: Bool? = nil,
         nextDueDate: Date? = nil,
         isAggregatedAmount: Bool = false,
         product: ProductSummary? = nil
@@ -69,6 +75,7 @@ public struct StockSummary: Hashable, Sendable, Identifiable {
         self.amountOpened = amountOpened
         self.amountOpenedAggregated = amountOpenedAggregated
         self.value = value
+        self.isValueIncomplete = isValueIncomplete
         self.nextDueDate = nextDueDate
         self.isAggregatedAmount = isAggregatedAmount
         self.product = product
@@ -88,6 +95,7 @@ extension StockSummary {
             amountOpenedAggregated: schema.amountOpenedAggregated,
             // Straight across, deliberately: absent stays absent.
             value: schema.value,
+            isValueIncomplete: schema.valueIncomplete,
             nextDueDate: VictualDates.day(schema.bestBeforeDate),
             // A real boolean as of 0.4.4 (issue #230); older servers sent a
             // bare 0/1 here, which the spec normalizer used to retype and no

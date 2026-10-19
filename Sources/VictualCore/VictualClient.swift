@@ -42,6 +42,10 @@ public struct VictualClient: Sendable {
     /// in it; until it is known they are read in the device's zone.
     public var serverTimeZone: TimeZone? { clock.timeZone }
 
+    /// Whether the instance honours a ``StockBookingKey``, once ``systemInfo()``
+    /// has said. Shared by every copy of the client, like ``clock``.
+    let bookingIdempotency = BookingIdempotencyKnowledge()
+
     /// Creates a client over an explicit transport.
     ///
     /// Use this to inject a stub transport in tests, or a transport other than
