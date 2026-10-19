@@ -127,8 +127,10 @@ struct BookingControllerTests {
         #expect(controller.error?.isOutcomeUnknown == true)
         #expect(controller.error?.isRetryable == false)
         #expect(!controller.canUndoLast)
-        // One request, never a second: the controller does not retry a write.
-        #expect(transport.recorder.requests.count == 1)
+        // One booking, never a second: the controller does not retry a write
+        // on its own. (The other request is the capability lookup.)
+        #expect(transport.recorder.bookings.count == 1)
+        #expect(!controller.canRetryLast)
     }
 
     @Test("A refused connection means nothing was sent, so it is an ordinary failure")

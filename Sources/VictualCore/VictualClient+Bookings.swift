@@ -18,6 +18,14 @@ import VictualAPI
 /// and never use that branch, because a string is read through PHP's
 /// `is_numeric` and its edge cases are the server's, not ours. A missing
 /// price is omitted, never sent as `0` or `""`.
+///
+/// Each booking takes an optional ``StockBookingKey``. It is sent as
+/// `Idempotency-Key` only to a server whose ``StockBookingIdempotency``
+/// protects that booking, which the client learns from `GET /system/info` the
+/// first time a key is passed. Older servers get the request without one and
+/// book as they always did. Retrying with the same key is what makes a booking
+/// whose outcome is unknown safe to send again; see
+/// ``VictualError/outcomeUnknown(underlying:)``.
 extension VictualClient {
     /// Removes an amount of a product from stock.
     ///
@@ -41,13 +49,16 @@ extension VictualClient {
         stockEntryID: String? = nil,
         recipeID: Int? = nil,
         locationID: Int? = nil,
-        allowSubproductSubstitution: Bool = false
+        allowSubproductSubstitution: Bool = false,
+        idempotencyKey: StockBookingKey? = nil
     ) async throws(VictualError) -> StockBooking {
         try Self.validateSingleEntry(stockEntryID: stockEntryID, amount: amount)
+        let header = await idempotencyHeader(idempotencyKey, for: .consume)
         return try await performBooking {
             try await underlying.postStockProductsByProductIdConsume(
                 .init(
                     path: .init(productId: productID),
+                    headers: .init(idempotencyKey: header),
                     body: .json(
                         .init(
                             amount: .case1(amount),
@@ -63,13 +74,15 @@ extension VictualClient {
             )
         } unwrap: { output in
             switch output {
-            case .ok(let response): return try response.body.json
+            case .ok(let response):
+                return (try response.body.json, response.headers.idempotentReplayed?.rawValue)
             case .badRequest(let response):
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
             case .conflict(let response):
-                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
+                let refusal = try response.body.json
+                throw VictualError.idempotency(code: refusal.code.rawValue, message: refusal.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
@@ -95,12 +108,15 @@ extension VictualClient {
         locationID: Int? = nil,
         shoppingLocationID: Int? = nil,
         stockLabelType: StockLabelType? = nil,
-        note: String? = nil
+        note: String? = nil,
+        idempotencyKey: StockBookingKey? = nil
     ) async throws(VictualError) -> StockBooking {
-        try await performBooking {
+        let header = await idempotencyHeader(idempotencyKey, for: .purchase)
+        return try await performBooking {
             try await underlying.postStockProductsByProductIdAdd(
                 .init(
                     path: .init(productId: productID),
+                    headers: .init(idempotencyKey: header),
                     body: .json(
                         .init(
                             amount: .case1(amount),
@@ -117,13 +133,15 @@ extension VictualClient {
             )
         } unwrap: { output in
             switch output {
-            case .ok(let response): return try response.body.json
+            case .ok(let response):
+                return (try response.body.json, response.headers.idempotentReplayed?.rawValue)
             case .badRequest(let response):
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
             case .conflict(let response):
-                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
+                let refusal = try response.body.json
+                throw VictualError.idempotency(code: refusal.code.rawValue, message: refusal.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
@@ -144,7 +162,8 @@ extension VictualClient {
         amount: Double,
         stockEntryID: String? = nil,
         allowSubproductSubstitution: Bool = false,
-        measurement: OpenMeasurement? = nil
+        measurement: OpenMeasurement? = nil,
+        idempotencyKey: StockBookingKey? = nil
     ) async throws(VictualError) -> StockBooking {
         try Self.validateSingleEntry(stockEntryID: stockEntryID, amount: amount)
         if let measurement {
@@ -164,10 +183,12 @@ extension VictualClient {
                 )
             }
         }
+        let header = await idempotencyHeader(idempotencyKey, for: .open)
         return try await performBooking {
             try await underlying.postStockProductsByProductIdOpen(
                 .init(
                     path: .init(productId: productID),
+                    headers: .init(idempotencyKey: header),
                     body: .json(
                         .init(
                             amount: .case1(amount),
@@ -187,13 +208,15 @@ extension VictualClient {
             )
         } unwrap: { output in
             switch output {
-            case .ok(let response): return try response.body.json
+            case .ok(let response):
+                return (try response.body.json, response.headers.idempotentReplayed?.rawValue)
             case .badRequest(let response):
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
             case .conflict(let response):
-                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
+                let refusal = try response.body.json
+                throw VictualError.idempotency(code: refusal.code.rawValue, message: refusal.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
@@ -214,12 +237,15 @@ extension VictualClient {
         shoppingLocationID: Int? = nil,
         price: Double? = nil,
         stockLabelType: StockLabelType? = nil,
-        note: String? = nil
+        note: String? = nil,
+        idempotencyKey: StockBookingKey? = nil
     ) async throws(VictualError) -> StockBooking {
-        try await performBooking {
+        let header = await idempotencyHeader(idempotencyKey, for: .inventory)
+        return try await performBooking {
             try await underlying.postStockProductsByProductIdInventory(
                 .init(
                     path: .init(productId: productID),
+                    headers: .init(idempotencyKey: header),
                     body: .json(
                         .init(
                             newAmount: .case1(newAmount),
@@ -235,13 +261,15 @@ extension VictualClient {
             )
         } unwrap: { output in
             switch output {
-            case .ok(let response): return try response.body.json
+            case .ok(let response):
+                return (try response.body.json, response.headers.idempotentReplayed?.rawValue)
             case .badRequest(let response):
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
             case .conflict(let response):
-                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
+                let refusal = try response.body.json
+                throw VictualError.idempotency(code: refusal.code.rawValue, message: refusal.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
@@ -257,7 +285,8 @@ extension VictualClient {
         amount: Double,
         fromLocationID: Int,
         toLocationID: Int,
-        stockEntryID: String? = nil
+        stockEntryID: String? = nil,
+        idempotencyKey: StockBookingKey? = nil
     ) async throws(VictualError) -> StockBooking {
         try Self.validateSingleEntry(stockEntryID: stockEntryID, amount: amount)
         guard fromLocationID != toLocationID else {
@@ -265,10 +294,12 @@ extension VictualClient {
                 message: "A transfer needs two different locations."
             )
         }
+        let header = await idempotencyHeader(idempotencyKey, for: .transfer)
         return try await performBooking {
             try await underlying.postStockProductsByProductIdTransfer(
                 .init(
                     path: .init(productId: productID),
+                    headers: .init(idempotencyKey: header),
                     body: .json(
                         .init(
                             amount: .case1(amount),
@@ -281,13 +312,15 @@ extension VictualClient {
             )
         } unwrap: { output in
             switch output {
-            case .ok(let response): return try response.body.json
+            case .ok(let response):
+                return (try response.body.json, response.headers.idempotentReplayed?.rawValue)
             case .badRequest(let response):
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
             case .conflict(let response):
-                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
+                let refusal = try response.body.json
+                throw VictualError.idempotency(code: refusal.code.rawValue, message: refusal.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
@@ -320,12 +353,17 @@ extension VictualClient {
     }
 
     /// Runs a booking and groups the log rows it wrote under their transaction.
+    ///
+    /// `unwrap` hands back the rows and the raw `Idempotent-Replayed` header,
+    /// which every booking route declares with its own generated enum.
     private func performBooking<Output>(
         _ call: () async throws -> Output,
-        unwrap: (Output) throws -> [Components.Schemas.StockLogEntry]
+        unwrap: (Output) throws -> ([Components.Schemas.StockLogEntry], String?)
     ) async throws(VictualError) -> StockBooking {
-        let rows = try await perform(call, unwrap: unwrap)
-        return StockBooking(rows)
+        let (rows, replayed) = try await perform(call, unwrap: unwrap)
+        var booking = StockBooking(rows)
+        booking.isReplayed = replayed.map { $0 == "true" }
+        return booking
     }
 
     /// Rejects naming a stock entry with any amount but 1.

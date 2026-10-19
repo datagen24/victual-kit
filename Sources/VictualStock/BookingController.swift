@@ -93,8 +93,28 @@ public final class BookingController {
     /// The last failure, for an alert. Cleared when the next booking starts.
     public private(set) var error: VictualError?
 
+    /// Whether the last booking failed in a way ``retryLast()`` can safely
+    /// send again.
+    ///
+    /// True only when its outcome is unknown or the server was still working on
+    /// it, its key went to a server that honours keys for that booking, and the
+    /// server's retention has not run out since the first attempt. Anything else
+    /// — above all a server before 0.5.0 — could book a second time, so the
+    /// answer is in the refreshed stock instead.
+    public private(set) var canRetryLast = false
+
     private let client: VictualClient
     private let gate: CapabilityGate?
+
+    /// The booking last sent and not yet known to have succeeded, with the key
+    /// it went out under.
+    ///
+    /// Sending the same request again reuses the key, which is what lets the
+    /// server answer a retry with the original booking instead of a second one.
+    private var pending: PendingBooking?
+
+    /// The clock retention is measured against. A seam for tests.
+    var now: @MainActor () -> Date = { Date() }
 
     /// - Parameter gate: What the key may do. Given one, a booking is not
     ///   offered for undo when the key could not carry the undo out.
@@ -125,23 +145,90 @@ public final class BookingController {
     ///
     /// - Returns: Whether it succeeded. A `403` here is expected and handled:
     ///   ``CapabilityGate`` can only report what was true when it last asked.
+    ///
+    /// The same request performed again — after a failure, before any other —
+    /// goes out under the same ``StockBookingKey``, so a server that honours keys
+    /// answers it with the first booking if that one did land.
     @discardableResult
     public func perform(_ request: BookingRequest) async -> Bool {
+        let key = key(for: request, retention: client.knownStockBookingIdempotency?.retention)
+        return await send(request, key: key)
+    }
+
+    /// Sends the last booking again, under the key it first went out with.
+    ///
+    /// - Returns: Whether it succeeded. Does nothing, and returns `false`, unless
+    ///   ``canRetryLast`` is true — and re-checks retention first, because a
+    ///   key the server has forgotten would book a second time.
+    @discardableResult
+    public func retryLast() async -> Bool {
+        guard canRetryLast, let pending else { return false }
+        guard let protection = client.knownStockBookingIdempotency,
+            isProtected(pending, by: protection)
+        else {
+            canRetryLast = false
+            return false
+        }
+        return await send(pending.request, key: pending.key)
+    }
+
+    private func send(_ request: BookingRequest, key: StockBookingKey) async -> Bool {
         isWorking = true
         error = nil
+        canRetryLast = false
         defer { isWorking = false }
         do {
-            let booking = try await send(request)
+            let booking = try await book(request, key: key)
+            pending = nil
             lastBooking = booking
             lastAction = request.action
             return true
         } catch {
-            self.error = VictualError.writeFailure(error)
+            let failure = VictualError.writeFailure(error)
+            self.error = failure
             lastBooking = nil
             lastAction = nil
+            switch failure {
+            case .idempotencyConflict:
+                // The key is spent on something else. Retrying it can only be
+                // refused again, and a new key could book twice.
+                pending = nil
+            case .outcomeUnknown, .idempotencyInProgress:
+                // The booking itself taught the client the capability, if it
+                // could be learned; without it, the key was not sent.
+                if let pending, let protection = client.knownStockBookingIdempotency {
+                    canRetryLast = isProtected(pending, by: protection)
+                }
+            default:
+                break
+            }
             await refreshPermissionsIfForbidden()
             return false
         }
+    }
+
+    /// The key to send `request` under: the pending one when this is the same
+    /// booking again and the server would still recognise it, a new one
+    /// otherwise.
+    private func key(for request: BookingRequest, retention: TimeInterval?) -> StockBookingKey {
+        if let pending, pending.request == request,
+            retention.map({ now().timeIntervalSince(pending.firstSent) < $0 }) ?? true
+        {
+            return pending.key
+        }
+        let fresh = PendingBooking(request: request, key: StockBookingKey(), firstSent: now())
+        pending = fresh
+        return fresh.key
+    }
+
+    /// Whether the server honours keys for `pending`'s booking and still
+    /// remembers its key. Counted from the first attempt, never the last.
+    private func isProtected(
+        _ pending: PendingBooking,
+        by protection: StockBookingIdempotency
+    ) -> Bool {
+        protection.protects(pending.request.operation)
+            && now().timeIntervalSince(pending.firstSent) < protection.retention
     }
 
     /// Reverses the last booking.
@@ -186,9 +273,10 @@ public final class BookingController {
 
     public func clearError() {
         error = nil
+        canRetryLast = false
     }
 
-    private func send(_ request: BookingRequest) async throws -> StockBooking {
+    private func book(_ request: BookingRequest, key: StockBookingKey) async throws -> StockBooking {
         switch request {
         case .consume(let productID, let amount, let spoiled, let entry, let location, let subs):
             return try await client.consume(
@@ -197,7 +285,8 @@ public final class BookingController {
                 spoiled: spoiled,
                 stockEntryID: entry,
                 locationID: location,
-                allowSubproductSubstitution: subs
+                allowSubproductSubstitution: subs,
+                idempotencyKey: key
             )
         case .purchase(
             let productID, let amount, let due, let price, let location, let shop, let label,
@@ -210,7 +299,8 @@ public final class BookingController {
                 locationID: location,
                 shoppingLocationID: shop,
                 stockLabelType: label,
-                note: note
+                note: note,
+                idempotencyKey: key
             )
         case .open(let productID, let amount, let entry, let subs, let measurement):
             return try await client.open(
@@ -218,7 +308,8 @@ public final class BookingController {
                 amount: amount,
                 stockEntryID: entry,
                 allowSubproductSubstitution: subs,
-                measurement: measurement
+                measurement: measurement,
+                idempotencyKey: key
             )
         case .inventory(
             let productID, let newAmount, let due, let location, let shop, let price, let label,
@@ -231,7 +322,8 @@ public final class BookingController {
                 shoppingLocationID: shop,
                 price: price,
                 stockLabelType: label,
-                note: note
+                note: note,
+                idempotencyKey: key
             )
         case .transfer(let productID, let amount, let from, let to, let entry):
             return try await client.transfer(
@@ -239,8 +331,31 @@ public final class BookingController {
                 amount: amount,
                 fromLocationID: from,
                 toLocationID: to,
-                stockEntryID: entry
+                stockEntryID: entry,
+                idempotencyKey: key
             )
+        }
+    }
+}
+
+/// A booking sent and not yet known to have succeeded.
+private struct PendingBooking {
+    let request: BookingRequest
+    let key: StockBookingKey
+    /// When the key first went out. Retention counts from here.
+    let firstSent: Date
+}
+
+extension BookingRequest {
+    /// The booking as the server names it when it says which bookings honour a
+    /// key.
+    var operation: StockBookingOperation {
+        switch action {
+        case .consume: .consume
+        case .purchase: .purchase
+        case .open: .open
+        case .inventory: .inventory
+        case .transfer: .transfer
         }
     }
 }

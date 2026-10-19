@@ -52,4 +52,16 @@ extension VictualError {
             message: "The server's database is unavailable or is being updated. Try again shortly."
         )
     }
+
+    /// `409` from a stock booking: the server's idempotency check refused it.
+    ///
+    /// Each booking route generates its own enum for the code, so this takes
+    /// the raw value. A code this package does not know stays a refusal.
+    static func idempotency(code: String, message: String?) -> VictualError {
+        switch code {
+        case "idempotency_conflict": .idempotencyConflict(message: message)
+        case "idempotency_in_progress": .idempotencyInProgress(message: message)
+        default: .badRequest(message: message)
+        }
+    }
 }
