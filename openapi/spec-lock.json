@@ -1,11 +1,11 @@
 {
   "upstreamRepository": "https://github.com/datagen24/victual",
-  "upstreamRef": "v0.4.4",
+  "upstreamRef": "v0.5.0",
   "upstreamPath": "victual.openapi.json",
-  "upstreamCommit": "f1247252311ccea9786b66b8cda3c6f1c537d5e9",
-  "upstreamSha256": "a73cdb65774b951d53fdfde4fce3e4adbf448dd14e982fb77abd8bb24465b0b4",
-  "generatedSha256": "a197165654461412423e12a29348de136d2a5341d0c3f54d02db6a733db5e604",
-  "syncedAt": "2026-10-17T12:43:25Z",
+  "upstreamCommit": "17f9f000b317e41d50b215afee2fef072d4f16b5",
+  "upstreamSha256": "490bcc7d56e9072edbe6053e4aba34dc0409bb2efd14ac2b770baa770e575e89",
+  "generatedSha256": "03a707f48b5577bfa5fa5a5d708a4ceb42a565ad8ed438872a82ebe5eeb18d13",
+  "syncedAt": "2026-10-19T12:20:45Z",
   "normalizations": {
     "pathsRewritten": 0,
     "operationIdsAssigned": 168,

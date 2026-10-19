@@ -68,6 +68,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .conflict(let response):
+                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
@@ -120,6 +122,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .conflict(let response):
+                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
@@ -188,6 +192,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .conflict(let response):
+                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
@@ -234,6 +240,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .conflict(let response):
+                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)
@@ -278,6 +286,8 @@ extension VictualClient {
                 throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .unauthorized: throw VictualError.unauthorized
             case .forbidden: throw VictualError.forbidden
+            case .conflict(let response):
+                throw VictualError.badRequest(message: try? response.body.json.errorMessage)
             case .internalServerError(let response): throw VictualError.from(response)
             case .serviceUnavailable(let response): throw VictualError.from(response)
             case .undocumented(let statusCode, _): throw VictualError.forStatus(statusCode)

@@ -28,6 +28,7 @@ struct PriceRedactionTests {
 
         #expect(row.value == nil)
         #expect(row.value != 0)
+        #expect(row.isValueIncomplete == nil)
         #expect(row.amount == 2.5)
     }
 
@@ -41,6 +42,17 @@ struct PriceRedactionTests {
         let row = try #require(try await client.currentStock().first)
 
         #expect(row.value == 12.75)
+    }
+
+    @Test("A partial value says it is partial")
+    func incompleteValueSurvives() async throws {
+        let partial = #"[{"product_id": 7, "amount": 2.5, "value": 4.5, "value_incomplete": true}]"#
+        let client = VictualClient.stubbed(StubTransport(status: 200, json: partial))
+
+        let row = try #require(try await client.currentStock().first)
+
+        #expect(row.value == 4.5)
+        #expect(row.isValueIncomplete == true)
     }
 
     @Test("An explicit null is also nil rather than zero")
@@ -68,6 +80,7 @@ struct PriceRedactionTests {
         let detail = try await client.productDetail(id: 7)
 
         #expect(detail.stockValue == nil)
+        #expect(detail.isStockValueIncomplete == nil)
         #expect(detail.lastPrice == nil)
         #expect(detail.averagePrice == nil)
         #expect(detail.currentPrice == nil)

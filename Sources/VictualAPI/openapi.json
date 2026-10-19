@@ -3,7 +3,7 @@
 	"info": {
 		"title": "Victual REST API",
 		"description": "Authentication uses one of the credentials below. Which one is accepted depends on the operation.<br><br>**API key.** Send an API key you manage [here](PlaceHolderManageApiKeysUrl) in the *VICTUAL-API-KEY* header. Add the optional *VICTUAL-API-KEY-TYPE* header to narrow which key types may match; it can only remove authority, never add it. A read-only key is limited to GET, HEAD and OPTIONS and gets **403** on anything else; it also gets **403** on three GET operations that write: GET /calendar/ical/sharing-link, GET /stock/barcodes/external-lookup/{barcode} and GET /print/shoppinglist/thermal. A general API key is never accepted in the query string; the calendar secret on GET /calendar/ical is the only query-string credential.<br><br>**Session cookie.** Requests from the frontend authenticate with the *victual_session* cookie. On API routes, a request authenticated by the session cookie other than GET, HEAD or OPTIONS is refused with **403** when its Origin header (or its Referer header, if there is no Origin) names another origin. A request with neither header is allowed. Requests authenticated by an API key rather than the session cookie are exempt.<br><br>**Calendar secret.** The calendar feed link carries a calendar key in the *secret* query parameter. It is accepted on GET /calendar/ical only. GET /calendar/ical/sharing-link does not accept it, and no other operation does.<br><br>**Label worker, verifier and renderer keys.** These use the same *VICTUAL-API-KEY* header but are accepted only on the label worker and renderer operations that name them. On those operations user API keys, session cookies and a disabled-authentication setup are refused with **401**. POST /labels/pair is public.<br><br>**Deployment modes.** These are not credentials. With reverse-proxy authentication the server takes the user's identity from a header set by the proxy. In dev, demo and prerelease modes, in an embedded install, and with authentication disabled, requests run as the default user without a credential, except on the label worker and renderer operations above.<br><br>**Dates and times.** Every instant this API stores or sends is RFC 3339 in UTC with exactly six fractional digits - `2026-10-04T18:30:00.000000Z` - typed *format: date-time* (ADR-0027 decision 2, issue #650). The fixed width is part of the contract: text order is chronological order, so two values may be compared as strings. The one exception is *time_local* on the system time endpoint, the same instant with the server's offset (`2026-10-04T14:30:00.000000-04:00`). Fields whose column is a SQL DATE are calendar dates, typed *format: date* and written `YYYY-MM-DD`; they are never converted between zones. Days the server computes - due today, overdue, expiring in N days - are days in the server's configured time zone. A value sent without an offset - to the three write fields *tracked_time* and *done_time*, to a generic entity write, or as a `query[]` comparison - is a wall clock in the server's configured zone: a repeated hour names the earlier instant, and a skipped hour is refused with **400**. Send an offset to name any instant unambiguously. These values were local wall clocks in the server's zone, `YYYY-MM-DD HH:MM:SS`, until migration 0301 converted them.<br><br>**Routing failures.** A path that matches no API route answers 404, and an unsupported method on a matched path answers 405. These routing outcomes are not listed on individual operations. A missing domain resource still uses the 404 response documented on its operation.",
-		"version": "0.4.4",
+		"version": "0.5.0",
 		"license": {
 			"name": "MIT (code originating from upstream grocy) AND BSD-3-Clause (Victual)",
 			"url": "https://github.com/datagen24/victual/blob/master/LICENSE.md"
@@ -557,6 +557,37 @@
 										"client": {
 											"type": "string",
 											"description": "The User-Agent header of this request, or \"unknown\" when it carried none."
+										},
+										"stock_booking_idempotency": {
+											"type": "object",
+											"required": [
+												"header",
+												"retention_seconds",
+												"operations"
+											],
+											"properties": {
+												"header": {
+													"type": "string",
+													"const": "Idempotency-Key"
+												},
+												"retention_seconds": {
+													"type": "integer",
+													"const": 604800
+												},
+												"operations": {
+													"type": "array",
+													"items": {
+														"type": "string",
+														"enum": [
+															"purchase",
+															"consume",
+															"transfer",
+															"open",
+															"inventory"
+														]
+													}
+												}
+											}
 										}
 									}
 								}
@@ -962,7 +993,7 @@
 			},
 			"post": {
 				"summary": "Adds a single object of the given entity",
-				"description": "Creating products, product_barcodes, locations, quantity_units, product_groups or shopping_locations requires MASTER_DATA_ADD, which MASTER_DATA_EDIT and ADMIN also satisfy. Chores require CHORES and tasks require TASKS. Shopping lists, recipes, the meal plan and equipment require their own permissions. Every other entity, including quantity_unit_conversions, requires MASTER_DATA_EDIT, and userfields and userentities additionally require ADMIN. A 403 names the missing permission. Creating a product may also add below-minimum-stock products to the shopping list, but only when the caller holds SHOPPINGLIST_ITEMS_ADD; the product is created either way.",
+				"description": "Creating products, product_barcodes, locations, quantity_units, product_groups or shopping_locations requires MASTER_DATA_ADD, which MASTER_DATA_EDIT and ADMIN also satisfy. Chores require CHORES and tasks require TASKS. Shopping lists, recipes, the meal plan and equipment require their own permissions. Every other entity, including quantity_unit_conversions, requires MASTER_DATA_EDIT, and userfields and userentities additionally require ADMIN. A 403 names the missing permission. Creating a product may also add below-minimum-stock products to the shopping list, but only when the caller holds SHOPPINGLIST_ITEMS_ADD; the product is created either way. A number field given NaN or an infinity (the strings \"NaN\", \"Infinity\", \"-Infinity\" or \"inf\", or a JSON number outside the range of a double) is refused with 400 \"The <field> must be a finite number\" and nothing is written (issue #916).",
 				"tags": [
 					"Generic entity interactions"
 				],
@@ -1179,7 +1210,7 @@
 			},
 			"put": {
 				"summary": "Edits the given object of the given entity",
-				"description": "Editing chores requires CHORES and editing tasks requires TASKS, whoever created the object. Editing any other entity, including the six that MASTER_DATA_ADD can create (products, product_barcodes, locations, quantity_units, product_groups, shopping_locations), requires MASTER_DATA_EDIT, except for entities with their own permission such as shopping lists, recipes, the meal plan and equipment. Editing userfields and userentities also requires ADMIN. MASTER_DATA_ADD alone does not allow editing.",
+				"description": "Editing chores requires CHORES and editing tasks requires TASKS, whoever created the object. Editing any other entity, including the six that MASTER_DATA_ADD can create (products, product_barcodes, locations, quantity_units, product_groups, shopping_locations), requires MASTER_DATA_EDIT, except for entities with their own permission such as shopping lists, recipes, the meal plan and equipment. Editing userfields and userentities also requires ADMIN. MASTER_DATA_ADD alone does not allow editing. A number field given NaN or an infinity (the strings \"NaN\", \"Infinity\", \"-Infinity\" or \"inf\", or a JSON number outside the range of a double) is refused with 400 \"The <field> must be a finite number\" and nothing is written (issue #916).",
 				"tags": [
 					"Generic entity interactions"
 				],
@@ -1269,7 +1300,7 @@
 			},
 			"delete": {
 				"summary": "Deletes a single object of the given entity",
-				"description": "Deleting a location with child locations or any stock is refused with HTTP 400. Move or consume stock before deleting its location. Deleting any object still referenced by another object through an enforced foreign key - for example a product or a location named by a location's minimum stock, or a storage class or quantity unit set on a location - is refused the same way, leaving both objects unchanged.",
+				"description": "Deleting a location with child locations or any stock is refused with HTTP 400. Move or consume stock before deleting its location. Deleting any object still referenced by another object through an enforced foreign key - for example a product or a location named by a location's minimum stock, or a storage class or quantity unit set on a location - is refused the same way, leaving both objects unchanged. A write that changes which records reference a userfile also needs read permission on every record that referenced that file before the write, or it answers 403 \"Permission missing: USERFILE_OWNER_READ\" and changes nothing (issue #920). Deleting a product, battery, chore or userfield definition deletes its userfield values, so it is such a write.",
 				"tags": [
 					"Generic entity interactions"
 				],
@@ -1495,6 +1526,7 @@
 						"$ref": "#/components/responses/SchemaUnavailable"
 					}
 				},
+				"description": "A write that changes which records reference a userfile also needs read permission on every record that referenced that file before the write, or it answers 403 \"Permission missing: USERFILE_OWNER_READ\" and changes nothing (issue #920). Clearing, replacing or adding a file value is such a write. A file or image value naming a resized copy (\"<name>__downscaledto<h>x<w>.<ext>\") is refused with 400.",
 				"operationId": "putUserfieldsByEntityByObjectId"
 			}
 		},
@@ -1653,7 +1685,7 @@
 			},
 			"put": {
 				"summary": "Uploads a single file",
-				"description": "The file will be stored at /data/storage/{group}/{file_name} (you need to remember the group and file name to get or delete it again)",
+				"description": "The file will be stored at /data/storage/{group}/{file_name} (you need to remember the group and file name to get or delete it again). A name in the form of a resized picture (\"<name>__downscaledto<h>x<w>.<ext>\") is refused with 400 in every group. In the userfiles group, a name some record references needs read permission on every such record, or the upload answers 403 \"Permission missing: USERFILE_OWNER_READ\" whether or not the name exists (issue #920).",
 				"tags": [
 					"Files"
 				],
@@ -1803,6 +1835,7 @@
 						"$ref": "#/components/responses/SchemaUnavailable"
 					}
 				},
+				"description": "In the userfiles group, a file some record references needs read permission on every such record, or the delete answers 403 \"Permission missing: USERFILE_OWNER_READ\" and the file stays (issue #920). An unreferenced file keeps the group's write permission.",
 				"operationId": "deleteFilesByGroupByFileName"
 			}
 		},
@@ -2169,7 +2202,7 @@
 								"properties": {
 									"permission_id": {
 										"type": "integer",
-										"description": "The id of the permission to assign to the user. Absent or null is refused with 400 \"permission_id is required\". A JSON number, or a string of plain decimal digits, that names an existing permission. A string with a sign, a leading zero, an exponent, a fraction or surrounding whitespace (\"+2\", \"02\", \"1e3\", \"2.0\", \" 2\") answers 400 \"No permission with id ... exists\". The request body filter removes a leading vertical tab or form feed before the value is read, so such a string can name a permission; that is a side effect of the filter (issue #946), not part of the accepted form. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The id of the permission to assign to the user. Absent or null is refused with 400 \"permission_id is required\". A JSON number, or a string of plain decimal digits, that names an existing permission. A string with a sign, a leading zero, an exponent, a fraction or surrounding whitespace (\"+2\", \"02\", \"1e3\", \"2.0\", \" 2\") answers 400 \"No permission with id ... exists\". A leading vertical tab or form feed is surrounding whitespace too and answers the same 400. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									}
 								},
 								"required": [
@@ -2777,7 +2810,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The entry's new amount. A negative amount is refused; zero is unaffected by that check. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite answers 400 \"Stock amount must be finite and non-negative\"; zero is accepted. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The entry's new amount. A negative amount is refused; zero is unaffected by that check. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite answers 400 \"Stock amount must be finite and non-negative\"; zero is accepted. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"best_before_date": {
 										"type": "string",
@@ -2794,7 +2827,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The price per stock quantity unit in configured currency. Omitted keeps the entry's current price; null or \"\" clears it. A string is read with PHP's is_numeric() (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The price per stock quantity unit in configured currency. Omitted keeps the entry's current price; null or \"\" clears it. A string is read with PHP's is_numeric() (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"open": {
 										"oneOf": [
@@ -2943,7 +2976,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The reading, in qu_id. Net contents unless gross is true. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"2.5\", \".5\", \"5.\", \"1e3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. A string that is not numeric, zero, a negative value, a value outside the range of a double and a JSON number outside that range all answer 400 \"A measurement requires a positive amount\". The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The reading, in qu_id. Net contents unless gross is true. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"2.5\", \".5\", \"5.\", \"1e3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. A string that is not numeric, zero, a negative value, a value outside the range of a double and a JSON number outside that range all answer 400 \"A measurement requires a positive amount\". A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"qu_id": {
 										"type": "integer",
@@ -3422,6 +3455,18 @@
 						"schema": {
 							"type": "integer"
 						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
+						}
 					}
 				],
 				"requestBody": {
@@ -3444,7 +3489,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The amount to add. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount can't be <= 0\". The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The amount to add. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount can't be <= 0\". A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"best_before_date": {
 										"type": "string",
@@ -3464,7 +3509,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The price per stock quantity unit in configured currency. Absent, null or \"\" means no price. Also accepts a string PHP's is_numeric() reads (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The price per stock quantity unit in configured currency. Absent, null or \"\" means no price. Also accepts a string PHP's is_numeric() reads (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"location_id": {
 										"type": "integer",
@@ -3476,7 +3521,7 @@
 									},
 									"stock_label_type": {
 										"type": "integer",
-										"description": "`0` = No label, `1` = Single label, `2` = Label per unit (one stock entry and label per unit). A numeric string is read like the same number. A value that is not numeric (\"abc\", \"\") is ignored and the default 0 is used. Every other numeric value, including `3`, books a single entry without a label; only `1` prints a label for a single entry. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "`0` = No label, `1` = Single label, `2` = Label per unit (one stock entry and label per unit). A numeric string is read like the same number. An empty string is ignored and the default 0 is used; any other string that is not numeric (\"abc\") answers 400 \"The stock label type must be a number\". Every other numeric value, including `3`, books a single entry without a label; only `1` prints a label for a single entry. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"note": {
 										"type": "string",
@@ -3503,6 +3548,18 @@
 									"items": {
 										"$ref": "#/components/schemas/StockLogEntry"
 									}
+								}
+							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
 								}
 							}
 						}
@@ -3542,6 +3599,32 @@
 					},
 					"503": {
 						"$ref": "#/components/responses/SchemaUnavailable"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByProductIdAdd"
@@ -3561,6 +3644,18 @@
 						"description": "A valid product id",
 						"schema": {
 							"type": "integer"
+						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
 						}
 					}
 				],
@@ -3584,7 +3679,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The amount to remove. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is in stock answers 400. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The amount to remove. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is in stock answers 400. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"transaction_type": {
 										"$ref": "#/components/schemas/StockConsumeTransactionType"
@@ -3599,7 +3694,7 @@
 									},
 									"recipe_id": {
 										"type": "integer",
-										"description": "A valid recipe id for which this product was used (for statistical purposes only). A string is accepted when PostgreSQL reads it as an integer: an optional sign and digits with optional surrounding space, tab, newline or carriage return (\"2\", \"+2\", \" 2\", \"02\"). A JSON number with an integral value inside the range of the integer column is accepted (1e3 is recorded as 1000). Negative ids and 0 are stored as given. A numeric value PostgreSQL cannot read as an integer answers 400 \"The database rejected this request\" and nothing is booked: the strings \"2.5\", \"2.0\", \"1e3\" and \"1e309\", a string of 400 digits, a JSON number with a fraction (2.5), and a whole number outside the integer range (2147483648, 99999999999, as a number or a string). A value that is not numeric (\"abc\", \"\", \"2abc\", \"0x1A\", one with a no-break space), and a JSON number outside the range of a double (1e309), are ignored: the consumption is booked with no recipe and the request answers 200 without saying so (issue #950). The id is not checked against existing recipes. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "Recipe attribution for statistical purposes; the id is not checked against existing recipes. When supplied, the value must be numeric and finite. A string must also be readable by PostgreSQL as an integer: an optional sign and digits with optional surrounding space, tab, newline or carriage return (\"2\", \"+2\", \" 2\", \"02\"). JSON numbers with integral values in the integer column range are accepted (1e3 is stored as 1000). Negative ids and zero retain their existing meaning. Invalid supplied values return 400 without consuming stock. Numeric strings containing controls, character references or markup are refused before purification."
 									},
 									"location_id": {
 										"type": "integer",
@@ -3633,6 +3728,18 @@
 									"items": {
 										"$ref": "#/components/schemas/StockLogEntry"
 									}
+								}
+							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
 								}
 							}
 						}
@@ -3672,6 +3779,32 @@
 					},
 					"503": {
 						"$ref": "#/components/responses/SchemaUnavailable"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByProductIdConsume"
@@ -3691,6 +3824,18 @@
 						"description": "A valid product id",
 						"schema": {
 							"type": "integer"
+						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
 						}
 					}
 				],
@@ -3716,7 +3861,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The amount to transfer - please note that when tare weight handling for the product is enabled, this needs to be the amount including the container weight (gross), the amount to be posted will be automatically calculated based on what is in stock and the defined tare weight. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is in stock at the source location answers 400. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The amount to transfer - please note that when tare weight handling for the product is enabled, this needs to be the amount including the container weight (gross), the amount to be posted will be automatically calculated based on what is in stock and the defined tare weight. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is in stock at the source location answers 400. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"location_id_from": {
 										"type": "integer",
@@ -3750,6 +3895,18 @@
 									"items": {
 										"$ref": "#/components/schemas/StockLogEntry"
 									}
+								}
+							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
 								}
 							}
 						}
@@ -3789,6 +3946,32 @@
 					},
 					"503": {
 						"$ref": "#/components/responses/SchemaUnavailable"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByProductIdTransfer"
@@ -3808,6 +3991,18 @@
 						"description": "A valid product id",
 						"schema": {
 							"type": "integer"
+						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
 						}
 					}
 				],
@@ -3831,7 +4026,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The new current amount for the given product. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The new amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; a value equal to the current stock answers 400 \"The new amount cannot equal the current stock amount\" and zero sets the stock to zero. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The new current amount for the given product. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The new amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; a value equal to the current stock answers 400 \"The new amount cannot equal the current stock amount\" and zero sets the stock to zero. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"best_before_date": {
 										"type": "string",
@@ -3856,11 +4051,11 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "If omitted, the last price of the product is used (only applies to added products). Null or \"\" is read as omitted. Also accepts a string PHP's is_numeric() reads (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "If omitted, the last price of the product is used (only applies to added products). Null or \"\" is read as omitted. Also accepts a string PHP's is_numeric() reads (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"stock_label_type": {
 										"type": "integer",
-										"description": "`0` = No label, `1` = Single label, `2` = Label per unit (one stock entry and label per unit; only applies to added products). A numeric string is read like the same number. A value that is not numeric (\"abc\", \"\") is ignored and the default 0 is used. Every other numeric value, including `3`, books a single entry without a label; only `1` prints a label for a single entry. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "`0` = No label, `1` = Single label, `2` = Label per unit (one stock entry and label per unit; only applies to added products). A numeric string is read like the same number. An empty string is ignored and the default 0 is used; any other string that is not numeric (\"abc\") answers 400 \"The stock label type must be a number\". Every other numeric value, including `3`, books a single entry without a label; only `1` prints a label for a single entry. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"note": {
 										"type": "string",
@@ -3881,6 +4076,18 @@
 									"items": {
 										"$ref": "#/components/schemas/StockLogEntry"
 									}
+								}
+							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
 								}
 							}
 						}
@@ -3920,6 +4127,32 @@
 					},
 					"503": {
 						"$ref": "#/components/responses/SchemaUnavailable"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByProductIdInventory"
@@ -3939,6 +4172,18 @@
 						"description": "A valid product id",
 						"schema": {
 							"type": "integer"
+						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
 						}
 					}
 				],
@@ -3962,7 +4207,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The amount to mark as opened. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is unopened answers 400. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The amount to mark as opened. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is unopened answers 400. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"stock_entry_id": {
 										"type": "string",
@@ -4033,6 +4278,18 @@
 									}
 								}
 							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
+								}
+							}
 						}
 					},
 					"400": {
@@ -4070,6 +4327,32 @@
 					},
 					"503": {
 						"$ref": "#/components/responses/SchemaUnavailable"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByProductIdOpen"
@@ -4142,6 +4425,7 @@
 						"$ref": "#/components/responses/SchemaUnavailable"
 					}
 				},
+				"description": "A write that changes which records reference a userfile also needs read permission on every record that referenced that file before the write, or it answers 403 \"Permission missing: USERFILE_OWNER_READ\" and changes nothing (issue #920). The removed product's userfield values are deleted with it.",
 				"operationId": "postStockProductsByProductIdToKeepMergeByProductIdToRemove"
 			}
 		},
@@ -4222,6 +4506,18 @@
 						"schema": {
 							"type": "string"
 						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
+						}
 					}
 				],
 				"requestBody": {
@@ -4244,7 +4540,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The amount to add. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount can't be <= 0\". The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The amount to add. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount can't be <= 0\". A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"best_before_date": {
 										"type": "string",
@@ -4264,7 +4560,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The price per stock quantity unit in configured currency. Absent, null or \"\" means no price. Also accepts a string PHP's is_numeric() reads (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The price per stock quantity unit in configured currency. Absent, null or \"\" means no price. Also accepts a string PHP's is_numeric() reads (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"location_id": {
 										"type": "integer",
@@ -4291,6 +4587,18 @@
 									"items": {
 										"$ref": "#/components/schemas/StockLogEntry"
 									}
+								}
+							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
 								}
 							}
 						}
@@ -4323,6 +4631,32 @@
 					},
 					"403": {
 						"$ref": "#/components/responses/Forbidden"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByBarcodeByBarcodeAdd"
@@ -4342,6 +4676,18 @@
 						"description": "Barcode",
 						"schema": {
 							"type": "string"
+						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
 						}
 					}
 				],
@@ -4365,7 +4711,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The amount to remove. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is in stock answers 400. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The amount to remove. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is in stock answers 400. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"transaction_type": {
 										"$ref": "#/components/schemas/StockConsumeTransactionType"
@@ -4380,7 +4726,7 @@
 									},
 									"recipe_id": {
 										"type": "integer",
-										"description": "A valid recipe id for which this product was used (for statistical purposes only). A string is accepted when PostgreSQL reads it as an integer: an optional sign and digits with optional surrounding space, tab, newline or carriage return (\"2\", \"+2\", \" 2\", \"02\"). A JSON number with an integral value inside the range of the integer column is accepted (1e3 is recorded as 1000). Negative ids and 0 are stored as given. A numeric value PostgreSQL cannot read as an integer answers 400 \"The database rejected this request\" and nothing is booked: the strings \"2.5\", \"2.0\", \"1e3\" and \"1e309\", a string of 400 digits, a JSON number with a fraction (2.5), and a whole number outside the integer range (2147483648, 99999999999, as a number or a string). A value that is not numeric (\"abc\", \"\", \"2abc\", \"0x1A\", one with a no-break space), and a JSON number outside the range of a double (1e309), are ignored: the consumption is booked with no recipe and the request answers 200 without saying so (issue #950). The id is not checked against existing recipes. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "Recipe attribution for statistical purposes; the id is not checked against existing recipes. When supplied, the value must be numeric and finite. A string must also be readable by PostgreSQL as an integer: an optional sign and digits with optional surrounding space, tab, newline or carriage return (\"2\", \"+2\", \" 2\", \"02\"). JSON numbers with integral values in the integer column range are accepted (1e3 is stored as 1000). Negative ids and zero retain their existing meaning. Invalid supplied values return 400 without consuming stock. Numeric strings containing controls, character references or markup are refused before purification."
 									},
 									"location_id": {
 										"type": "integer",
@@ -4416,6 +4762,18 @@
 									}
 								}
 							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
+								}
+							}
 						}
 					},
 					"400": {
@@ -4446,6 +4804,32 @@
 					},
 					"403": {
 						"$ref": "#/components/responses/Forbidden"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByBarcodeByBarcodeConsume"
@@ -4465,6 +4849,18 @@
 						"description": "Barcode",
 						"schema": {
 							"type": "string"
+						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
 						}
 					}
 				],
@@ -4490,7 +4886,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The amount to transfer - please note that when tare weight handling for the product is enabled, this needs to be the amount including the container weight (gross), the amount to be posted will be automatically calculated based on what is in stock and the defined tare weight. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is in stock at the source location answers 400. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The amount to transfer - please note that when tare weight handling for the product is enabled, this needs to be the amount including the container weight (gross), the amount to be posted will be automatically calculated based on what is in stock and the defined tare weight. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is in stock at the source location answers 400. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"location_id_from": {
 										"type": "integer",
@@ -4526,6 +4922,18 @@
 									}
 								}
 							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
+								}
+							}
 						}
 					},
 					"400": {
@@ -4556,6 +4964,32 @@
 					},
 					"403": {
 						"$ref": "#/components/responses/Forbidden"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByBarcodeByBarcodeTransfer"
@@ -4575,6 +5009,18 @@
 						"description": "Barcode",
 						"schema": {
 							"type": "string"
+						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
 						}
 					}
 				],
@@ -4598,7 +5044,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The new current amount for the given product. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The new amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; a value equal to the current stock answers 400 \"The new amount cannot equal the current stock amount\" and zero sets the stock to zero. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The new current amount for the given product. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The new amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; a value equal to the current stock answers 400 \"The new amount cannot equal the current stock amount\" and zero sets the stock to zero. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"best_before_date": {
 										"type": "string",
@@ -4619,7 +5065,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "If omitted, the last price of the product is used (only applies to added products). Null or \"\" is read as omitted. Also accepts a string PHP's is_numeric() reads (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "If omitted, the last price of the product is used (only applies to added products). Null or \"\" is read as omitted. Also accepts a string PHP's is_numeric() reads (the grammar of the amount fields: \"3\", \"-2\", \"2.50\", \"1e3\", \".5\", \"5.\", with optional surrounding space, tab, newline, carriage return, vertical tab or form feed). Other strings, and a JSON number outside the range of a double, answer 400 \"The price must be a number\". A negative price is accepted and stored. A numeric string outside the range of a double (\"1e309\", 400 digits) passes that check and answers 400 \"The database rejected this request\". A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									}
 								}
 							}
@@ -4636,6 +5082,18 @@
 									"items": {
 										"$ref": "#/components/schemas/StockLogEntry"
 									}
+								}
+							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
 								}
 							}
 						}
@@ -4668,6 +5126,32 @@
 					},
 					"403": {
 						"$ref": "#/components/responses/Forbidden"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByBarcodeByBarcodeInventory"
@@ -4687,6 +5171,18 @@
 						"description": "Barcode",
 						"schema": {
 							"type": "string"
+						}
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "One cryptographically random key per intended booking. Discover support in /system/info before using it. Retry unchanged contents with this key for at most retention_seconds from first send; after that, resolve an unknown outcome through stock or journal reads. Transaction IDs are opaque strings. See docs/api/stock-booking-idempotency.md.",
+						"schema": {
+							"type": "string",
+							"minLength": 8,
+							"maxLength": 128,
+							"pattern": "^[A-Za-z0-9._:-]{8,128}$"
 						}
 					}
 				],
@@ -4710,7 +5206,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The amount to mark as opened. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is unopened answers 400. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The amount to mark as opened. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The amount must be a number\". A value that is negative or not finite (for example \"1e309\" or a string of 400 digits) answers 400 \"Stock amount must be finite and non-negative\"; zero answers 400 \"Amount must be greater than 1.0E-9\" and more than is unopened answers 400. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"stock_entry_id": {
 										"type": "string",
@@ -4781,6 +5277,18 @@
 									}
 								}
 							}
+						},
+						"headers": {
+							"Idempotent-Replayed": {
+								"description": "false when this key booked; true when replaying current rows. Absent for unkeyed requests and errors. Replayed rows can be undone or redacted. A replay with deleted ledger rows answers 400 and must never be retried with a new key.",
+								"schema": {
+									"type": "string",
+									"enum": [
+										"true",
+										"false"
+									]
+								}
+							}
 						}
 					},
 					"400": {
@@ -4811,6 +5319,32 @@
 					},
 					"403": {
 						"$ref": "#/components/responses/Forbidden"
+					},
+					"409": {
+						"description": "idempotency_conflict: same scoped key with different request contents; stop retries. idempotency_in_progress: retry later using the same key and unchanged contents. Neither response books.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error_message",
+										"code"
+									],
+									"properties": {
+										"error_message": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": [
+												"idempotency_conflict",
+												"idempotency_in_progress"
+											]
+										}
+									}
+								}
+							}
+						}
 					}
 				},
 				"operationId": "postStockProductsByBarcodeByBarcodeOpen"
@@ -4930,7 +5464,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The gross reading, in the location's own tare_qu_id; the server subtracts the location's tare_weight. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The gross amount must be a number\". A string of 400 digits or \"1e309\" answers 400 \"Stock amounts must be finite\"; a reading below the location's tare weight answers 400. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The gross reading, in the location's own tare_qu_id; the server subtracts the location's tare_weight. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The gross amount must be a number\". A string of 400 digits or \"1e309\" answers 400 \"Stock amounts must be finite\"; a reading below the location's tare weight answers 400. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"gross_qu_id": {
 										"type": "integer",
@@ -5041,7 +5575,7 @@
 												"pattern": "^[ \\t\\n\\r\\x0B\\f]*[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?[ \\t\\n\\r\\x0B\\f]*$"
 											}
 										],
-										"description": "The gross reading, in the location's own tare_qu_id; the server subtracts the location's tare_weight. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The gross amount must be a number\". A string of 400 digits or \"1e309\" answers 400 \"Stock amounts must be finite\"; a reading below the location's tare weight answers 400. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The gross reading, in the location's own tare_qu_id; the server subtracts the location's tare_weight. Also accepts a string PHP's is_numeric() reads: an optional sign, digits with an optional fraction or a fraction starting with a dot, and an optional exponent (\"2\", \"+2\", \"2.5\", \".5\", \"5.\", \"1e3\", \"1E-3\"), with optional leading and trailing space, tab, newline, carriage return, vertical tab or form feed. Other strings (\"\", \"abc\", \"0x1A\", \"1_000\", \"NaN\", \"INF\", \"2abc\", one with a no-break space), and a JSON number outside the range of a double, answer 400 \"The gross amount must be a number\". A string of 400 digits or \"1e309\" answers 400 \"Stock amounts must be finite\"; a reading below the location's tare weight answers 400. A numeric string is read as sent: it is not passed through the request body filter, so a string with a control character, a character reference or markup inside it (\"1\\u00002\", \"&#50;\", \"1<x>2\") is not numeric and answers 400 with nothing written (issue #946)."
 									},
 									"gross_qu_id": {
 										"type": "integer",
@@ -5165,7 +5699,7 @@
 						}
 					},
 					"403": {
-						"description": "The authenticated user lacks a permission this operation requires",
+						"description": "The authenticated user lacks SHOPPINGLIST_ITEMS_ADD or STOCK_VIEW",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -5181,6 +5715,7 @@
 						"$ref": "#/components/responses/SchemaUnavailable"
 					}
 				},
+				"description": "Requires SHOPPINGLIST_ITEMS_ADD and STOCK_VIEW. The items this adds are exactly the products below their minimum stock amount, which is stock information a caller without STOCK_VIEW may not read (issue #933, ADR-0050).",
 				"operationId": "postStockShoppinglistAddMissingProducts"
 			}
 		},
@@ -5415,7 +5950,7 @@
 								"properties": {
 									"product_id": {
 										"type": "integer",
-										"description": "A valid product id of the product to be added. A string is accepted when PostgreSQL reads it as an integer (\"2\", \"+2\", \" 2\", \"02\"). A JSON number with an integral value inside the range of the integer column is accepted (1e3 is read as 1000). A numeric value PostgreSQL cannot read as an integer answers 400 \"The database rejected this request\": the strings \"2.5\", \"2.0\", \"1e3\" and \"1e309\", a string of 400 digits, and a JSON number with a fraction (2.5). 0 (also -0 as a JSON number), \"0\", \"\", a value that is not numeric (\"abc\", \"2abc\", \"0x1A\", one with a no-break space) and a JSON number outside the range of a double (1e309) answer 400 \"No product id was supplied\". A whole number outside the integer range (2147483648, 99999999999, as a number or a string) answers 400 and nothing changes. A negative id (-2, \"-2\", \"-0\") answers 400 \"Product does not exist or is inactive\", as does an id that names no product. The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The product id, required and positive. A string must be readable by PostgreSQL as an integer (\"2\", \"+2\", \" 2\", \"02\"). JSON numbers with integral values inside the integer column range are accepted (1e3 is read as 1000). Invalid supplied values return 400 without changing the shopping list. Zero, negative ids, nonfinite values, markup, character references and embedded controls are refused. An unknown positive id is a no-op on remove; add requires an active product."
 									},
 									"qu_id": {
 										"type": "integer",
@@ -5427,7 +5962,7 @@
 									},
 									"product_amount": {
 										"type": "number",
-										"description": "The amount (related to the products stock QU) to add, when omitted, the default amount of 1 is used"
+										"description": "Amount in the product stock quantity unit. When omitted, defaults to 1. A supplied value must be numeric, finite and positive; otherwise the response is 400 and the shopping list is unchanged. Numeric strings accept signs, decimals, scientific notation and surrounding ASCII numeric whitespace. Markup, character references and embedded non-whitespace controls are refused before purification."
 									},
 									"note": {
 										"type": "string",
@@ -5507,7 +6042,7 @@
 								"properties": {
 									"product_id": {
 										"type": "integer",
-										"description": "A valid product id of the item on the shopping list. A string is accepted when PostgreSQL reads it as an integer (\"2\", \"+2\", \" 2\", \"02\"). A JSON number with an integral value inside the range of the integer column is accepted (1e3 is read as 1000). A numeric value PostgreSQL cannot read as an integer answers 400 \"The database rejected this request\": the strings \"2.5\", \"2.0\", \"1e3\" and \"1e309\", a string of 400 digits, and a JSON number with a fraction (2.5). 0 (also -0 as a JSON number), \"0\", \"\", a value that is not numeric (\"abc\", \"2abc\", \"0x1A\", one with a no-break space) and a JSON number outside the range of a double (1e309) answer 400 \"No product id was supplied\". A whole number outside the integer range (2147483648, 99999999999, as a number or a string) answers 400 and nothing changes. A negative id (-2, \"-2\") or \"-0\" answers 204 and nothing changes (issue #950). The request body filter also removes unknown tags and comments, removes control characters inside a string, strips vertical tab, form feed and NEL at the edges, and decodes character references before the value is read, so a string containing them is not read as written."
+										"description": "The product id, required and positive. A string must be readable by PostgreSQL as an integer (\"2\", \"+2\", \" 2\", \"02\"). JSON numbers with integral values inside the integer column range are accepted (1e3 is read as 1000). Invalid supplied values return 400 without changing the shopping list. Zero, negative ids, nonfinite values, markup, character references and embedded controls are refused. An unknown positive id is a no-op on remove; add requires an active product."
 									},
 									"list_id": {
 										"type": "integer",
@@ -5515,7 +6050,7 @@
 									},
 									"product_amount": {
 										"type": "number",
-										"description": "The amount of product units to remove, when omitted, the default amount of 1 is used"
+										"description": "Amount in the product stock quantity unit. When omitted, defaults to 1. A supplied value must be numeric, finite and positive; otherwise the response is 400 and the shopping list is unchanged. Numeric strings accept signs, decimals, scientific notation and surrounding ASCII numeric whitespace. Markup, character references and embedded non-whitespace controls are refused before purification."
 									}
 								},
 								"example": {
@@ -6684,6 +7219,7 @@
 						"$ref": "#/components/responses/SchemaUnavailable"
 					}
 				},
+				"description": "A write that changes which records reference a userfile also needs read permission on every record that referenced that file before the write, or it answers 403 \"Permission missing: USERFILE_OWNER_READ\" and changes nothing (issue #920). The removed chore's userfield values are deleted with it.",
 				"operationId": "postChoresByChoreIdToKeepMergeByChoreIdToRemove"
 			}
 		},
@@ -6841,7 +7377,7 @@
 				},
 				"responses": {
 					"200": {
-						"description": "The operation was successful",
+						"description": "The charge cycle was tracked. A caller with BATTERIES_VIEW gets the new battery_charge_cycles row. A caller without it, such as a write-only charger integration, gets only `id`, the new cycle's id, which is what POST /batteries/charge-cycles/{chargeCycleId}/undo takes; reading the row needs BATTERIES_VIEW (ADR-0035, issue #908).",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -8230,23 +8766,13 @@
 					},
 					"422": {
 						"$ref": "#/components/responses/LabelRefused",
-						"description": "Refused request with field, code and error_message"
+						"description": "Refused request with field, code and error_message. A NUL byte in any string of the registration, object keys included, is refused with code invalid_value and the dotted path to it (drivers.0.capability_document.models.1) before anything is stored (issue #944)."
 					},
 					"500": {
 						"$ref": "#/components/responses/ServerError"
 					},
 					"503": {
 						"$ref": "#/components/responses/SchemaUnavailable"
-					},
-					"400": {
-						"description": "A NUL byte in a capability_document string can trigger a PostgreSQL refusal. The handler returns a generic ApiError with no driver detail and rolls back registration. A NUL byte in driver_id currently receives 200; its stored representation has not been verified. Other validation failures use 422 LabelRefusal.",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ApiError"
-								}
-							}
-						}
 					}
 				},
 				"requestBody": {
@@ -15303,7 +15829,8 @@
 							"number",
 							"null"
 						],
-						"x-visibility": "STOCK_PRICES_VIEW"
+						"x-visibility": "STOCK_PRICES_VIEW",
+						"description": "The price per stock quantity unit. A price of 0 is a known zero (the entry was free); a price nobody recorded is unknown, which is null; and the field is absent for a caller without STOCK_PRICES_VIEW (ADR-0045)."
 					},
 					"open": {
 						"type": "integer"
@@ -15497,7 +16024,7 @@
 					},
 					"stock_value": {
 						"type": "number",
-						"description": "The value of the stock currently held: price times amount, summed over stock entries and rounded to two decimal places, an entry with no price counting as 0. For a parent product it is the parent's own entries only: its sub products' stock is not included, although `stock_amount_aggregated` counts it (migrations/0298.pgsql.sql). 0 when nothing is in stock",
+						"description": "The value of the stock currently held: price times amount, summed over the stock entries whose price is known and rounded to two decimal places. When any entry's price is unknown this is the known part only, and `stock_value_incomplete` is true. For a parent product it is the parent's own entries only: its sub products' stock is not included, although `amount_aggregated` counts it, so 0 for a parent with no stock of its own says nothing about its sub products' value (migrations/0298.pgsql.sql, 0316).",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"next_due_date": {
@@ -15512,7 +16039,7 @@
 							"number",
 							"null"
 						],
-						"description": "The price of the last purchase of the corresponding product",
+						"description": "The price of the last purchase with a known price (purchase, inventory correction or self-production). 0 when that purchase was free; null when no purchase has a known price; absent for a caller without STOCK_PRICES_VIEW (ADR-0045).",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"avg_price": {
@@ -15520,7 +16047,7 @@
 							"number",
 							"null"
 						],
-						"description": "The amount-weighted average price per stock unit over this product's purchase, inventory-correction and self-production bookings that are not undone and carry a price above 0 and an amount above 0, so a negative inventory correction is not counted. For an edited entry its newest stock-edit-new booking stands in for the original, weighted by the entry's edited origin amount. It includes bookings whose stock has since been consumed, so it is not the average of what is in stock now (products_average_price, db/pgsql/baseline/04_views_l1a.sql). Null when there is no such booking",
+						"description": "The amount-weighted average price per stock unit over this product's purchase, inventory-correction and self-production bookings that are not undone and carry a known price (0 included) and an amount above 0, so a negative inventory correction is not counted. For an edited entry its newest stock-edit-new booking stands in for the original, weighted by the entry's edited origin amount. It includes bookings whose stock has since been consumed, so it is not the average of what is in stock now (products_average_price, db/pgsql/baseline/04_views_l1a.sql). Null when there is no such booking. A price of 0 that was stored for a price never entered, before this release or in an imported database, is unknown and not counted (ADR-0045).",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"current_price": {
@@ -15528,7 +16055,7 @@
 							"number",
 							"null"
 						],
-						"description": "The current price of the corresponding product, based on the stock entry to use next (defined by the default consume rule \"Opened first, then first due first, then first in first out\") or on the last price if the product is currently not in stock",
+						"description": "The current price of the corresponding product: the price of the stock entry to use next (defined by the default consume rule \"Opened first, then first due first, then first in first out\"), or the last known price (`last_price`) when the product is not in stock or that entry's price is unknown. 0 is a known zero; null when neither is known; absent for a caller without STOCK_PRICES_VIEW (ADR-0045).",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"oldest_price": {
@@ -15608,6 +16135,11 @@
 							"null"
 						],
 						"description": "The product's default store (its shopping_location_id); null when it has none"
+					},
+					"stock_value_incomplete": {
+						"type": "boolean",
+						"description": "True when at least one of the product's own stock entries has no known price, so `stock_value` is the value of the others only. False when the product has no stock. Redacted together with `stock_value` for a caller without STOCK_PRICES_VIEW (ADR-0045 option B).",
+						"x-visibility": "STOCK_PRICES_VIEW"
 					}
 				},
 				"example": {
@@ -16736,7 +17268,8 @@
 						"type": [
 							"string",
 							"null"
-						]
+						],
+						"description": "An opaque identifier shared by the bookings of one operation; compare it as a string and do not parse it. New ids are 32 lowercase hexadecimal characters (ADR-0046); ids stored before that change are 13, and both stay valid for reads and undo."
 					},
 					"transaction_type": {
 						"$ref": "#/components/schemas/StockTransactionType"
@@ -16746,7 +17279,7 @@
 							"number",
 							"null"
 						],
-						"description": "Null for a booking that carries no price, such as a consumption - a legitimate value, distinct from this field being absent for a caller without STOCK_PRICES_VIEW",
+						"description": "The price per stock quantity unit. Null for a booking that carries no price, such as a consumption of an unpriced entry, and for a price that was never recorded. A price of 0 is a known zero (the entry was free); a price nobody recorded is unknown, which is null; and the field is absent for a caller without STOCK_PRICES_VIEW (ADR-0045).",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"note": {
@@ -16967,7 +17500,7 @@
 					},
 					"value": {
 						"type": "number",
-						"description": "The value of the stock currently held: price times amount, summed over stock entries and rounded to two decimal places, an entry with no price counting as 0. For a parent product it is the parent's own entries only: its sub products' stock is not included, although `amount_aggregated` counts it (migrations/0298.pgsql.sql)",
+						"description": "The value of the stock currently held: price times amount, summed over the stock entries whose price is known and rounded to two decimal places. When any entry's price is unknown this is the known part only, and `value_incomplete` is true. For a parent product it is the parent's own entries only: its sub products' stock is not included, although `amount_aggregated` counts it, so 0 for a parent with no stock of its own says nothing about its sub products' value (migrations/0298.pgsql.sql, 0316).",
 						"x-visibility": "STOCK_PRICES_VIEW"
 					},
 					"best_before_date": {
@@ -16992,6 +17525,11 @@
 					"due_type": {
 						"type": "integer",
 						"description": "The product's due type: 1 when its due date is a best-before date, 2 when it is an expiration date. `expired_products` on GET /stock/volatile lists due type 2 only"
+					},
+					"value_incomplete": {
+						"type": "boolean",
+						"description": "True when at least one of the product's own stock entries has no known price, so `value` is the value of the others only. Redacted together with `value` for a caller without STOCK_PRICES_VIEW (ADR-0045 option B).",
+						"x-visibility": "STOCK_PRICES_VIEW"
 					}
 				}
 			},
