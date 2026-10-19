@@ -95,6 +95,29 @@ struct BookingIdempotencyGateTests {
         #expect(transport.recorder.bookings.first?.request.headerFields[idempotencyKeyField] == key.rawValue)
     }
 
+    @Test("A changed retention and an unknown operation still decode")
+    func openCapabilityValues() async throws {
+        let systemInfo = """
+            {
+              "victual_version": { "Version": "0.5.1", "ReleaseDate": "2026-11-01" },
+              "database_engine": "PostgreSQL 16.10",
+              "stock_booking_idempotency": {
+                "header": "Idempotency-Key",
+                "retention_seconds": 86400,
+                "operations": ["consume", "undo"]
+              }
+            }
+            """
+        let transport = StubTransport.bookingServer(systemInfo: systemInfo, answers: [.booked(replayed: nil)])
+        let client = VictualClient.stubbed(transport)
+
+        _ = try await client.verifyConnection()
+        let capability = try #require(try await client.stockBookingIdempotency())
+
+        #expect(capability.retention == 86400)
+        #expect(capability.operations == [.consume])
+    }
+
     @Test("Without a key the client asks nothing first and sends no header")
     func noKeyNoLookup() async throws {
         let transport = StubTransport.bookingServer(

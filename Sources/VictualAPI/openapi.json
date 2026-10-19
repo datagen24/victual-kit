@@ -567,24 +567,15 @@
 											],
 											"properties": {
 												"header": {
-													"type": "string",
-													"const": "Idempotency-Key"
+													"type": "string"
 												},
 												"retention_seconds": {
-													"type": "integer",
-													"const": 604800
+													"type": "integer"
 												},
 												"operations": {
 													"type": "array",
 													"items": {
-														"type": "string",
-														"enum": [
-															"purchase",
-															"consume",
-															"transfer",
-															"open",
-															"inventory"
-														]
+														"type": "string"
 													}
 												}
 											}
