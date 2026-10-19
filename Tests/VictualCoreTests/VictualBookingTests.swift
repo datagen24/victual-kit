@@ -371,13 +371,13 @@ struct BookingResultTests {
     }
 
     /// 0.5.0 declares 409 on every booking for an `Idempotency-Key` conflict.
-    /// The client sends no key yet, but the message still comes through.
+    /// `VictualBookingIdempotencyTests` covers both codes; this pins the message.
     @Test("A 409 on a booking keeps the server's message")
     func conflictKeepsMessage() async throws {
         let body = #"{"error_message": "Key reused with different contents", "code": "idempotency_conflict"}"#
         let client = VictualClient.stubbed(StubTransport(status: 409, json: body))
 
-        await #expect(throws: VictualError.badRequest(message: "Key reused with different contents")) {
+        await #expect(throws: VictualError.idempotencyConflict(message: "Key reused with different contents")) {
             _ = try await client.purchase(productID: 7, amount: 1)
         }
     }
