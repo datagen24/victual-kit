@@ -4,8 +4,8 @@
   "upstreamPath": "victual.openapi.json",
   "upstreamCommit": "17f9f000b317e41d50b215afee2fef072d4f16b5",
   "upstreamSha256": "490bcc7d56e9072edbe6053e4aba34dc0409bb2efd14ac2b770baa770e575e89",
-  "generatedSha256": "03a707f48b5577bfa5fa5a5d708a4ceb42a565ad8ed438872a82ebe5eeb18d13",
-  "syncedAt": "2026-10-19T12:20:45Z",
+  "generatedSha256": "458de1436b60bc77b25549f2e5e39f00f0287a20535d0b7572e45644553a0e50",
+  "syncedAt": "2026-10-19T12:44:58Z",
   "normalizations": {
     "pathsRewritten": 0,
     "operationIdsAssigned": 168,
@@ -35,6 +35,11 @@
       "components/schemas/RefillDetail/open_order",
       "components/schemas/RefillDetail/explicit_date",
       "components/schemas/RefillSettingsUpdate/rule"
+    ],
+    "responseValuesOpened": [
+      "/paths/~1system~1info/get/responses/200/content/application~1json/schema/properties/stock_booking_idempotency/properties/header: dropped const",
+      "/paths/~1system~1info/get/responses/200/content/application~1json/schema/properties/stock_booking_idempotency/properties/retention_seconds: dropped const",
+      "/paths/~1system~1info/get/responses/200/content/application~1json/schema/properties/stock_booking_idempotency/properties/operations/items: dropped enum"
     ],
     "serverPlaceholderReplaced": true,
     "upstreamIssuesLeftInPlace": []

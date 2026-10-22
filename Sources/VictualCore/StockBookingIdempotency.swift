@@ -84,8 +84,10 @@ public struct StockBookingIdempotency: Hashable, Sendable {
 extension StockBookingIdempotency {
     init(_ payload: Operations.GetSystemInfo.Output.Ok.Body.JsonPayload.StockBookingIdempotencyPayload) {
         self.init(
-            operations: Set(payload.operations.compactMap { StockBookingOperation(rawValue: $0.rawValue) }),
-            retention: TimeInterval(payload.retentionSeconds.rawValue)
+            // Names this client does not know are operations it never books
+            // with a key, so they are left out rather than failing the decode.
+            operations: Set(payload.operations.compactMap(StockBookingOperation.init(rawValue:))),
+            retention: TimeInterval(payload.retentionSeconds)
         )
     }
 }

@@ -356,6 +356,41 @@ def retype_integer_flags(document: dict) -> list[str]:
     return retyped
 
 
+# Response values the server documents as fixed today but may change without a
+# contract break, keyed by the schema's JSON pointer from the document root.
+# A `const` or closed `enum` becomes a single-case Swift enum, so a server that
+# sends anything else fails to decode the whole response -- for `/system/info`,
+# that fails `verifyConnection()`. ADR-0046 reserves the retention and the set
+# of protected operations to the maintainer, so the client reads them as open
+# values and decides itself what it understands.
+OPEN_RESPONSE_VALUES: dict[str, list[str]] = {
+    "/paths/~1system~1info/get/responses/200/content/application~1json/schema"
+    "/properties/stock_booking_idempotency": [
+        "properties/header",
+        "properties/retention_seconds",
+        "properties/operations/items",
+    ],
+}
+
+
+def open_response_values(document: dict) -> list[str]:
+    """Drops `const` and `enum` from the response values listed above."""
+    opened: list[str] = []
+    for base, relatives in OPEN_RESPONSE_VALUES.items():
+        for relative in relatives:
+            pointer = f"{base}/{relative}"
+            node: object = document
+            for token in pointer.lstrip("/").split("/"):
+                token = token.replace("~1", "/").replace("~0", "~")
+                node = node.get(token) if isinstance(node, dict) else None
+            if not isinstance(node, dict):
+                continue
+            dropped = [keyword for keyword in ("const", "enum") if node.pop(keyword, None) is not None]
+            if dropped:
+                opened.append(f"{pointer}: dropped {', '.join(dropped)}")
+    return opened
+
+
 def lint(document: dict) -> list[str]:
     """Report upstream modelling mistakes that are left in place deliberately.
 
@@ -397,6 +432,7 @@ def normalize(raw: bytes, overrides: dict[str, str]) -> tuple[dict, dict]:
     report["danglingRefsRepaired"] = repaired
     report["integerFlagsRetyped"] = retype_integer_flags(document)
     report["nullUnionMembersDropped"] = drop_null_union_members(document)
+    report["responseValuesOpened"] = open_response_values(document)
 
     document["servers"] = [{"url": SERVER_URL, "description": SERVER_DESCRIPTION}]
     report["serverPlaceholderReplaced"] = True
