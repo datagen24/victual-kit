@@ -3,7 +3,7 @@
 	"info": {
 		"title": "Victual REST API",
 		"description": "Authentication uses one of the credentials below. Which one is accepted depends on the operation.<br><br>**API key.** Send an API key you manage [here](PlaceHolderManageApiKeysUrl) in the *VICTUAL-API-KEY* header. Add the optional *VICTUAL-API-KEY-TYPE* header to narrow which key types may match; it can only remove authority, never add it. A read-only key is limited to GET, HEAD and OPTIONS and gets **403** on anything else; it also gets **403** on three GET operations that write: GET /calendar/ical/sharing-link, GET /stock/barcodes/external-lookup/{barcode} and GET /print/shoppinglist/thermal. A general API key is never accepted in the query string; the calendar secret on GET /calendar/ical is the only query-string credential.<br><br>**Session cookie.** Requests from the frontend authenticate with the *victual_session* cookie. On API routes, a request authenticated by the session cookie other than GET, HEAD or OPTIONS is refused with **403** when its Origin header (or its Referer header, if there is no Origin) names another origin. A request with neither header is allowed. Requests authenticated by an API key rather than the session cookie are exempt.<br><br>**Calendar secret.** The calendar feed link carries a calendar key in the *secret* query parameter. It is accepted on GET /calendar/ical only. GET /calendar/ical/sharing-link does not accept it, and no other operation does.<br><br>**Label worker, verifier and renderer keys.** These use the same *VICTUAL-API-KEY* header but are accepted only on the label worker and renderer operations that name them. On those operations user API keys, session cookies and a disabled-authentication setup are refused with **401**. POST /labels/pair is public.<br><br>**Deployment modes.** These are not credentials. With reverse-proxy authentication the server takes the user's identity from a header set by the proxy. In dev, demo and prerelease modes, in an embedded install, and with authentication disabled, requests run as the default user without a credential, except on the label worker and renderer operations above.<br><br>**Dates and times.** Every instant this API stores or sends is RFC 3339 in UTC with exactly six fractional digits - `2026-10-04T18:30:00.000000Z` - typed *format: date-time* (ADR-0027 decision 2, issue #650). The fixed width is part of the contract: text order is chronological order, so two values may be compared as strings. The one exception is *time_local* on the system time endpoint, the same instant with the server's offset (`2026-10-04T14:30:00.000000-04:00`). Fields whose column is a SQL DATE are calendar dates, typed *format: date* and written `YYYY-MM-DD`; they are never converted between zones. Days the server computes - due today, overdue, expiring in N days - are days in the server's configured time zone. A value sent without an offset - to the three write fields *tracked_time* and *done_time*, to a generic entity write, or as a `query[]` comparison - is a wall clock in the server's configured zone: a repeated hour names the earlier instant, and a skipped hour is refused with **400**. Send an offset to name any instant unambiguously. These values were local wall clocks in the server's zone, `YYYY-MM-DD HH:MM:SS`, until migration 0301 converted them.<br><br>**Routing failures.** A path that matches no API route answers 404, and an unsupported method on a matched path answers 405. These routing outcomes are not listed on individual operations. A missing domain resource still uses the 404 response documented on its operation.",
-		"version": "0.5.0",
+		"version": "0.5.2",
 		"license": {
 			"name": "MIT (code originating from upstream grocy) AND BSD-3-Clause (Victual)",
 			"url": "https://github.com/datagen24/victual/blob/master/LICENSE.md"
@@ -1733,6 +1733,16 @@
 					},
 					"413": {
 						"description": "The body is larger than the effective upload limit, the smallest of FILE_STORAGE_MAX_SIZE_MB, upload_max_filesize and post_max_size. Nothing is stored. The message names the setting, for example \"... FILE_STORAGE_MAX_SIZE_MB ...\".",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiError"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "The request names a Content-Type that is parsed as form or structured data before the upload can read it: `application/json` and any `+json` type, `application/x-www-form-urlencoded`, `application/xml`, `text/xml` and any `+xml` type, or `multipart/form-data`. Nothing is stored. Send the file as `application/octet-stream`. Every other type, for example `application/pdf` or `image/png`, and a request with no Content-Type, stores the bytes as sent. Before 0.5.2 a refused type answered 204 and stored an empty file (issue #1035).",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3672,7 +3682,7 @@
 									},
 									"recipe_id": {
 										"type": "integer",
-										"description": "Recipe attribution for statistical purposes; the id is not checked against existing recipes. When supplied, the value must be numeric and finite. A string must also be readable by PostgreSQL as an integer: an optional sign and digits with optional surrounding space, tab, newline or carriage return (\"2\", \"+2\", \" 2\", \"02\"). JSON numbers with integral values in the integer column range are accepted (1e3 is stored as 1000). Negative ids and zero retain their existing meaning. Invalid supplied values return 400 without consuming stock. Numeric strings containing controls, character references or markup are refused before purification."
+										"description": "Recipe attribution for statistical purposes. When supplied, it must name an existing recipe; any other id, including zero and negative numbers, returns 400 without consuming stock. When supplied, the value must be numeric and finite. A string must also be readable by PostgreSQL as an integer: an optional sign and digits with optional surrounding space, tab, newline or carriage return (\"2\", \"+2\", \" 2\", \"02\"). JSON numbers with integral values in the integer column range are accepted (1e3 is stored as 1000). Invalid supplied values return 400 without consuming stock. Numeric strings containing controls, character references or markup are refused before purification."
 									},
 									"location_id": {
 										"type": "integer",
@@ -4709,7 +4719,7 @@
 									},
 									"recipe_id": {
 										"type": "integer",
-										"description": "Recipe attribution for statistical purposes; the id is not checked against existing recipes. When supplied, the value must be numeric and finite. A string must also be readable by PostgreSQL as an integer: an optional sign and digits with optional surrounding space, tab, newline or carriage return (\"2\", \"+2\", \" 2\", \"02\"). JSON numbers with integral values in the integer column range are accepted (1e3 is stored as 1000). Negative ids and zero retain their existing meaning. Invalid supplied values return 400 without consuming stock. Numeric strings containing controls, character references or markup are refused before purification."
+										"description": "Recipe attribution for statistical purposes. When supplied, it must name an existing recipe; any other id, including zero and negative numbers, returns 400 without consuming stock. When supplied, the value must be numeric and finite. A string must also be readable by PostgreSQL as an integer: an optional sign and digits with optional surrounding space, tab, newline or carriage return (\"2\", \"+2\", \" 2\", \"02\"). JSON numbers with integral values in the integer column range are accepted (1e3 is stored as 1000). Invalid supplied values return 400 without consuming stock. Numeric strings containing controls, character references or markup are refused before purification."
 									},
 									"location_id": {
 										"type": "integer",
@@ -7695,7 +7705,7 @@
 						"$ref": "#/components/responses/Forbidden"
 					}
 				},
-				"description": "If an internal calendar event lacks the type or entity ID needed for a stable UID, the current 500 error_message names the missing fields and may include that event’s title. Access to this endpoint follows its documented credentials; the title disclosure is tracked separately."
+				"description": "If an internal calendar event lacks the type or entity ID needed for a stable UID, the 500 error_message names the missing fields and nothing else. The event's title is written to the server log, never to the response. Access to this endpoint follows its documented credentials."
 			}
 		},
 		"/calendar/ical/sharing-link": {
@@ -12209,7 +12219,7 @@
 					"Consumption recipes"
 				],
 				"summary": "Share a consumption recipe with a user",
-				"description": "Requires STOCK_VIEW and the share right. Name the recipient by user_id or username. The owner can grant any right; a holder of the share right can grant only rights they hold, never the share right, and cannot change a share that holds a right they lack. The share is accepted whether or not the recipient holds the global permission a right needs, and does nothing until they do.",
+				"description": "Requires STOCK_VIEW and the share right. Name the recipient by user_id or username. The owner can grant any right; a holder of the share right can grant only rights they hold, never the share right, and cannot change a share that holds a right they lack. The share is accepted whether or not the recipient holds the global permission a right needs, and does nothing until they do. The answer is 204 whether or not the named user exists: an unknown username, an unknown user_id and the owner write nothing and answer the same as a real user, so 204 does not confirm that the user exists. A right the caller lacks is refused with 403 whether or not the user exists.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -12252,16 +12262,6 @@
 							}
 						}
 					},
-					"422": {
-						"description": "The request cannot be acted on",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ConsumptionError"
-								}
-							}
-						}
-					},
 					"500": {
 						"$ref": "#/components/responses/ServerError"
 					},
@@ -12287,7 +12287,7 @@
 					"Consumption recipes"
 				],
 				"summary": "Set a user's share",
-				"description": "Requires STOCK_VIEW and the share right, within the rules of the POST. Replaces the user's rights, and creates the share when the user holds none.",
+				"description": "Requires STOCK_VIEW and the share right, within the rules of the POST. Replaces the user's rights, and creates the share when the user holds none. The answer is 204 whether or not the user exists; 204 does not confirm that the user exists, and nothing is written for an unknown user or the owner.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -12330,16 +12330,6 @@
 							}
 						}
 					},
-					"422": {
-						"description": "The request cannot be acted on",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ConsumptionError"
-								}
-							}
-						}
-					},
 					"500": {
 						"$ref": "#/components/responses/ServerError"
 					},
@@ -12371,7 +12361,7 @@
 					"Consumption recipes"
 				],
 				"summary": "Remove a user's share",
-				"description": "Requires STOCK_VIEW. Any user can remove their own share; the owner, or a holder of the share right within the rules of the POST, can remove another's.",
+				"description": "Requires STOCK_VIEW. Any user can remove their own share; the owner, or a holder of the share right within the rules of the POST, can remove another's. A share the caller is not allowed to remove answers exactly as a share that does not exist, and nothing is removed.",
 				"responses": {
 					"204": {
 						"description": "Success"
@@ -12386,10 +12376,10 @@
 					},
 					"403": {
 						"$ref": "#/components/responses/ConsumptionForbidden",
-						"description": "Permission or right missing"
+						"description": "Global permission missing"
 					},
 					"404": {
-						"description": "No such consumption recipe, or no share on it. The two answers are the same.",
+						"description": "No such consumption recipe, no share on it, or a share the caller may not remove. A share the caller may not remove answers exactly as a missing share does. A caller without the share right gets the missing-recipe answer for all three; a share holder is told the recipe exists but the share does not.",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -14376,7 +14366,7 @@
 					},
 					"error": {
 						"type": "string",
-						"description": "A stable token such as not_found, right_missing, permission_missing, stock_refused, no_conversion, invalid_user, invalid_request, same_version_different_payload, invalid_transition, invalid_mapping, invalid_link or future_occurred_at"
+						"description": "A stable token such as not_found, right_missing, permission_missing, stock_refused, no_conversion, invalid_request, same_version_different_payload, invalid_transition, invalid_mapping, invalid_link or future_occurred_at"
 					}
 				}
 			},
