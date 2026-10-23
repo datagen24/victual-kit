@@ -3,7 +3,7 @@
 	"info": {
 		"title": "Victual REST API",
 		"description": "Authentication uses one of the credentials below. Which one is accepted depends on the operation.<br><br>**API key.** Send an API key you manage [here](PlaceHolderManageApiKeysUrl) in the *VICTUAL-API-KEY* header. Add the optional *VICTUAL-API-KEY-TYPE* header to narrow which key types may match; it can only remove authority, never add it. A read-only key is limited to GET, HEAD and OPTIONS and gets **403** on anything else; it also gets **403** on three GET operations that write: GET /calendar/ical/sharing-link, GET /stock/barcodes/external-lookup/{barcode} and GET /print/shoppinglist/thermal. A general API key is never accepted in the query string; the calendar secret on GET /calendar/ical is the only query-string credential.<br><br>**Session cookie.** Requests from the frontend authenticate with the *victual_session* cookie. On API routes, a request authenticated by the session cookie other than GET, HEAD or OPTIONS is refused with **403** when its Origin header (or its Referer header, if there is no Origin) names another origin. A request with neither header is allowed. Requests authenticated by an API key rather than the session cookie are exempt.<br><br>**Calendar secret.** The calendar feed link carries a calendar key in the *secret* query parameter. It is accepted on GET /calendar/ical only. GET /calendar/ical/sharing-link does not accept it, and no other operation does.<br><br>**Label worker, verifier and renderer keys.** These use the same *VICTUAL-API-KEY* header but are accepted only on the label worker and renderer operations that name them. On those operations user API keys, session cookies and a disabled-authentication setup are refused with **401**. POST /labels/pair is public.<br><br>**Deployment modes.** These are not credentials. With reverse-proxy authentication the server takes the user's identity from a header set by the proxy. In dev, demo and prerelease modes, in an embedded install, and with authentication disabled, requests run as the default user without a credential, except on the label worker and renderer operations above.<br><br>**Dates and times.** Every instant this API stores or sends is RFC 3339 in UTC with exactly six fractional digits - `2026-10-04T18:30:00.000000Z` - typed *format: date-time* (ADR-0027 decision 2, issue #650). The fixed width is part of the contract: text order is chronological order, so two values may be compared as strings. The one exception is *time_local* on the system time endpoint, the same instant with the server's offset (`2026-10-04T14:30:00.000000-04:00`). Fields whose column is a SQL DATE are calendar dates, typed *format: date* and written `YYYY-MM-DD`; they are never converted between zones. Days the server computes - due today, overdue, expiring in N days - are days in the server's configured time zone. A value sent without an offset - to the three write fields *tracked_time* and *done_time*, to a generic entity write, or as a `query[]` comparison - is a wall clock in the server's configured zone: a repeated hour names the earlier instant, and a skipped hour is refused with **400**. Send an offset to name any instant unambiguously. These values were local wall clocks in the server's zone, `YYYY-MM-DD HH:MM:SS`, until migration 0301 converted them.<br><br>**Routing failures.** A path that matches no API route answers 404, and an unsupported method on a matched path answers 405. These routing outcomes are not listed on individual operations. A missing domain resource still uses the 404 response documented on its operation.",
-		"version": "0.5.2",
+		"version": "0.5.3",
 		"license": {
 			"name": "MIT (code originating from upstream grocy) AND BSD-3-Clause (Victual)",
 			"url": "https://github.com/datagen24/victual/blob/master/LICENSE.md"
@@ -10042,6 +10042,320 @@
 				"operationId": "getLabelsDriversByDriverIdSchemasBySchemaVersion"
 			}
 		},
+		"/labels/locations/{locationId}/print-subtree": {
+			"post": {
+				"tags": [
+					"Labels"
+				],
+				"summary": "Queue labels for everything under a location",
+				"description": "Requires MASTER_DATA_EDIT and STOCK_VIEW. Issues location labels for every descendant of the location (and the location itself with include_root), in one transaction, at most 200 locations. A location that already has a valid active label - an unretired label with a print job that is neither cancelled nor dead-lettered - is skipped unless reprint_existing is true; inactive locations are skipped. dry_run answers 200 with the plan and queues nothing; a real run answers 202 and is replayed when its Idempotency-Key is reused.",
+				"parameters": [
+					{
+						"name": "locationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"import_epoch",
+									"printer_id"
+								],
+								"properties": {
+									"import_epoch": {
+										"type": "integer",
+										"minimum": 0
+									},
+									"printer_id": {
+										"type": "integer",
+										"minimum": 1
+									},
+									"include_root": {
+										"type": "boolean",
+										"default": false
+									},
+									"reprint_existing": {
+										"type": "boolean",
+										"default": false
+									},
+									"dry_run": {
+										"type": "boolean",
+										"default": false
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"202": {
+						"description": "Labels queued; each job is awaiting_artifact",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"root_location_id",
+										"include_root",
+										"dry_run",
+										"queued",
+										"skipped"
+									],
+									"properties": {
+										"root_location_id": {
+											"type": "integer"
+										},
+										"include_root": {
+											"type": "boolean"
+										},
+										"dry_run": {
+											"type": "boolean"
+										},
+										"queued": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"location_id",
+													"name",
+													"path",
+													"depth"
+												],
+												"properties": {
+													"location_id": {
+														"type": "integer"
+													},
+													"name": {
+														"type": "string"
+													},
+													"path": {
+														"type": "string"
+													},
+													"depth": {
+														"type": "integer"
+													},
+													"reprint": {
+														"type": "boolean"
+													},
+													"reason": {
+														"type": "string",
+														"enum": [
+															"already_labelled",
+															"inactive"
+														]
+													},
+													"job_id": {
+														"type": "integer"
+													},
+													"label_uid": {
+														"type": "string"
+													}
+												}
+											}
+										},
+										"skipped": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"location_id",
+													"name",
+													"path",
+													"depth"
+												],
+												"properties": {
+													"location_id": {
+														"type": "integer"
+													},
+													"name": {
+														"type": "string"
+													},
+													"path": {
+														"type": "string"
+													},
+													"depth": {
+														"type": "integer"
+													},
+													"reprint": {
+														"type": "boolean"
+													},
+													"reason": {
+														"type": "string",
+														"enum": [
+															"already_labelled",
+															"inactive"
+														]
+													},
+													"job_id": {
+														"type": "integer"
+													},
+													"label_uid": {
+														"type": "string"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidPathParameter",
+						"description": "The {locationId} path parameter is not an integer"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized",
+						"description": "Missing, invalid or expired API key"
+					},
+					"409": {
+						"$ref": "#/components/responses/LabelConflict",
+						"description": "idempotency_conflict: the Idempotency-Key was already used for a different request"
+					},
+					"422": {
+						"description": "Invalid printer configuration or request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LabelRefusal"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/ServerError"
+					},
+					"503": {
+						"$ref": "#/components/responses/SchemaUnavailable"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"200": {
+						"description": "The plan of a dry run, or the stored answer of a replayed key",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"root_location_id",
+										"include_root",
+										"dry_run",
+										"queued",
+										"skipped"
+									],
+									"properties": {
+										"root_location_id": {
+											"type": "integer"
+										},
+										"include_root": {
+											"type": "boolean"
+										},
+										"dry_run": {
+											"type": "boolean"
+										},
+										"queued": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"location_id",
+													"name",
+													"path",
+													"depth"
+												],
+												"properties": {
+													"location_id": {
+														"type": "integer"
+													},
+													"name": {
+														"type": "string"
+													},
+													"path": {
+														"type": "string"
+													},
+													"depth": {
+														"type": "integer"
+													},
+													"reprint": {
+														"type": "boolean"
+													},
+													"reason": {
+														"type": "string",
+														"enum": [
+															"already_labelled",
+															"inactive"
+														]
+													},
+													"job_id": {
+														"type": "integer"
+													},
+													"label_uid": {
+														"type": "string"
+													}
+												}
+											}
+										},
+										"skipped": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"location_id",
+													"name",
+													"path",
+													"depth"
+												],
+												"properties": {
+													"location_id": {
+														"type": "integer"
+													},
+													"name": {
+														"type": "string"
+													},
+													"path": {
+														"type": "string"
+													},
+													"depth": {
+														"type": "integer"
+													},
+													"reprint": {
+														"type": "boolean"
+													},
+													"reason": {
+														"type": "string",
+														"enum": [
+															"already_labelled",
+															"inactive"
+														]
+													},
+													"job_id": {
+														"type": "integer"
+													},
+													"label_uid": {
+														"type": "string"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"operationId": "postLabelsLocationsByLocationIdPrintSubtree"
+			}
+		},
 		"/labels/locations/{locationId}/print": {
 			"post": {
 				"tags": [
@@ -11166,6 +11480,48 @@
 					}
 				},
 				"operationId": "postLabelsAssets"
+			}
+		},
+		"/labels/assets/starter-fonts": {
+			"post": {
+				"tags": [
+					"Label templates"
+				],
+				"summary": "Add the starter fonts",
+				"description": "Stores the bundled Noto Sans, Noto Sans Bold and Noto Sans Mono fonts (SIL Open Font License 1.1) as assets, so text can be added without an upload. Idempotent: fonts already stored are returned as they are. Refused with name_taken when a starter name already holds a different file.",
+				"responses": {
+					"200": {
+						"description": "The asset row of each starter font",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"type": "object"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized",
+						"description": "Missing, invalid or expired API key"
+					},
+					"422": {
+						"$ref": "#/components/responses/LabelRefused",
+						"description": "A refusal carrying a field and a code"
+					},
+					"500": {
+						"$ref": "#/components/responses/ServerError"
+					},
+					"503": {
+						"$ref": "#/components/responses/SchemaUnavailable"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					}
+				},
+				"operationId": "postLabelsAssetsStarterFonts"
 			}
 		},
 		"/labels/assets/{assetId}/bytes": {

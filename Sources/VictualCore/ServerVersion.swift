@@ -46,7 +46,7 @@ extension VictualClient {
     ///
     /// A test keeps it equal to the vendored specification's `info.version`, so a
     /// spec sync cannot move one without the other.
-    public static let supportedServerVersion = ServerVersion("0.5.2")!
+    public static let supportedServerVersion = ServerVersion("0.5.3")!
 }
 
 extension SystemInformation {
