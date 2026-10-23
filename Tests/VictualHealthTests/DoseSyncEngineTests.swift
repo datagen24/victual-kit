@@ -437,6 +437,23 @@ struct DoseSyncEngineTests {
         #expect(submitter.calls.count == 1)
         #expect(try await engine.queue().outbox.count == 2)
     }
+
+    @Test(arguments: [
+        VictualError.edgeAccessRequired, .edgeBlocked(rayID: nil), .edgeChallenged(rayID: nil),
+    ])
+    func edgeRefusalStopsTheDrainAndHoldsNothing(refusal: VictualError) async throws {
+        let source = ScriptedSource([F.batch([F.dose("D1"), F.dose("D2")])])
+        let submitter = FakeSubmitter()
+        submitter.failWhen { _ in refusal }
+        let engine = F.engine(source: source, submitter: submitter)
+        try await engine.pull()
+        let thrown = await #expect(throws: VictualError.self) { try await engine.drain() }
+        #expect(thrown == refusal)
+        #expect(submitter.calls.count == 1)
+        let outbox = try await engine.queue().outbox
+        #expect(outbox.count == 2)
+        #expect(outbox.allSatisfy { !$0.held })
+    }
 }
 
 /// A clock a test can move.

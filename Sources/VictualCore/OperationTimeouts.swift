@@ -107,14 +107,16 @@ struct TimeoutRoutingTransport: ClientTransport {
     }
 }
 
-/// Refuses to follow a redirect to a Cloudflare Access sign-in page.
+/// Refuses to follow a redirect to a Cloudflare Access sign-in page, and keeps
+/// a service token from following any redirect to another host.
 ///
 /// Access answers a request without a valid service token with a `302` to its
 /// login page. Followed, that becomes a `200` HTML page the generated client
 /// cannot decode, and the reason is lost. Stopped here, the `302` itself comes
 /// back, and ``EdgeResponseMiddleware`` reports it as
 /// ``VictualError/edgeAccessRequired``. Every other redirect is followed as
-/// before.
+/// before — but `URLSession` carries custom headers across a redirect, so one
+/// to a different host goes without the token's two headers.
 ///
 /// A session delegate rather than a task one: in streaming mode
 /// `URLSessionTransport` gives each task its own delegate, which does not
@@ -128,6 +130,15 @@ final class AccessRedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
         completionHandler: @escaping @Sendable (URLRequest?) -> Void
     ) {
         let target = request.url?.absoluteString ?? ""
-        completionHandler(EdgeResponseMiddleware.isAccessLogin(target) ? nil : request)
+        guard !EdgeResponseMiddleware.isAccessLogin(target) else {
+            completionHandler(nil)
+            return
+        }
+        var request = request
+        if request.url?.host?.lowercased() != task.originalRequest?.url?.host?.lowercased() {
+            request.setValue(nil, forHTTPHeaderField: VictualEdgeCredential.clientIDHeaderName.rawName)
+            request.setValue(nil, forHTTPHeaderField: VictualEdgeCredential.clientSecretHeaderName.rawName)
+        }
+        completionHandler(request)
     }
 }

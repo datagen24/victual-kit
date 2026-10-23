@@ -227,6 +227,20 @@ struct EdgeAccessSessionTests {
         #expect(CloudflareStub.hosts == ["victual.edge.test", "victual.edge.test"])
     }
 
+    @Test("Keeps the token on a same-host redirect, drops it on a cross-host one")
+    func tokenStaysOnItsHost() async throws {
+        let token = VictualEdgeCredential(clientID: "abc.access", clientSecret: "cfast_x")
+
+        CloudflareStub.reset(mode: .ordinaryRedirect)
+        _ = try await client(edge: token).systemInfo()
+        #expect(CloudflareStub.secrets == ["cfast_x", "cfast_x"])
+
+        CloudflareStub.reset(mode: .crossHostRedirect)
+        _ = try await client(edge: token).systemInfo()
+        #expect(CloudflareStub.hosts == ["victual.edge.test", "elsewhere.test"])
+        #expect(CloudflareStub.secrets == ["cfast_x", nil])
+    }
+
     @Test("A session without the guard would load the login page")
     func redirectControl() async throws {
         // Without this, the stop test above would pass against a stub whose
@@ -253,20 +267,23 @@ struct EdgeAccessSessionTests {
 
 /// Answers for an instance behind Cloudflare, recording what reached it.
 final class CloudflareStub: URLProtocol, @unchecked Sendable {
-    enum Mode { case accessRedirect, ordinaryRedirect }
+    enum Mode { case accessRedirect, ordinaryRedirect, crossHostRedirect }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var mode = Mode.accessRedirect
     nonisolated(unsafe) private static var seenHosts: [String] = []
+    nonisolated(unsafe) private static var seenSecrets: [String?] = []
 
     static func reset(mode: Mode) {
         lock.withLock {
             self.mode = mode
             seenHosts = []
+            seenSecrets = []
         }
     }
 
     static var hosts: [String] { lock.withLock { seenHosts } }
+    static var secrets: [String?] { lock.withLock { seenSecrets } }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -275,6 +292,7 @@ final class CloudflareStub: URLProtocol, @unchecked Sendable {
         let url = request.url!
         let mode = Self.lock.withLock {
             Self.seenHosts.append(url.host ?? "")
+            Self.seenSecrets.append(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
             return Self.mode
         }
 
@@ -283,9 +301,11 @@ final class CloudflareStub: URLProtocol, @unchecked Sendable {
             redirect(to: "https://scpeterson.cloudflareaccess.com/cdn-cgi/access/login/victual.edge.test")
         case .ordinaryRedirect where url.path == "/api/system/info":
             redirect(to: "https://victual.edge.test/api/system/info-moved")
+        case .crossHostRedirect where url.host == "victual.edge.test":
+            redirect(to: "https://elsewhere.test/api/system/info")
         case .accessRedirect:
             respond(200, contentType: "text/html", body: "<html>Sign in</html>")
-        case .ordinaryRedirect:
+        case .ordinaryRedirect, .crossHostRedirect:
             respond(200, contentType: "application/json", body: systemInfoJSON)
         }
     }
@@ -296,7 +316,11 @@ final class CloudflareStub: URLProtocol, @unchecked Sendable {
         let response = HTTPURLResponse(
             url: request.url!, statusCode: 302, httpVersion: "HTTP/1.1",
             headerFields: ["Location": location, "Server": "cloudflare", "Content-Type": "text/html"])!
-        client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: URL(string: location)!), redirectResponse: response)
+        // Carried over as URLSession's own HTTP loading does, custom headers
+        // included -- which is what the guard has to undo across hosts.
+        var next = request
+        next.url = URL(string: location)!
+        client?.urlProtocol(self, wasRedirectedTo: next, redirectResponse: response)
         // Reached only when the redirect is refused: the 302 is then the answer.
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocolDidFinishLoading(self)
