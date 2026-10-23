@@ -50,9 +50,13 @@ public struct VictualClient: Sendable {
     ///
     /// Use this to inject a stub transport in tests, or a transport other than
     /// `URLSession`.
+    ///
+    /// - Parameter edgeCredential: A Cloudflare Access service token, for an
+    ///   instance behind Access. Sent on every request beside the API key.
     public init(
         server: VictualServer,
         apiKey: VictualAPIKey,
+        edgeCredential: VictualEdgeCredential? = nil,
         transport: any ClientTransport,
         middlewares: [any ClientMiddleware] = [],
         serverTimeZone: TimeZone? = nil
@@ -60,9 +64,14 @@ public struct VictualClient: Sendable {
         self.clock = InstanceClock(timeZone: serverTimeZone)
         // The content-type shim runs outermost so that it sees, and can
         // correct, whatever the runtime set -- see ``JSONContentTypeMiddleware``
-        // for why a request without it is refused by the server.
-        let authenticated: [any ClientMiddleware] =
-            [JSONContentTypeMiddleware(), APIKeyAuthenticationMiddleware(apiKey)] + middlewares
+        // for why a request without it is refused by the server. The edge
+        // classifier comes next, so a Cloudflare response is turned into an
+        // edge failure before anything inside it tries to read the body.
+        var authenticated: [any ClientMiddleware] = [JSONContentTypeMiddleware(), EdgeResponseMiddleware()]
+        if let edgeCredential {
+            authenticated.append(EdgeCredentialMiddleware(edgeCredential))
+        }
+        authenticated += [APIKeyAuthenticationMiddleware(apiKey)] + middlewares
         self.server = server
         self.underlying = VictualAPIClient(
             serverURL: server.baseURL,
@@ -81,12 +90,20 @@ public struct VictualClient: Sendable {
 
     /// Creates a client backed by `URLSession`.
     ///
-    /// - Parameter session: A session to send everything through. Omitted, the
-    ///   client uses ``OperationTimeouts``: a short limit for reads, a longer
-    ///   one for writes and a longest for medication synchronization.
+    /// - Parameters:
+    ///   - edgeCredential: A Cloudflare Access service token, for an instance
+    ///     behind Access.
+    ///   - session: A session to send everything through. Omitted, the client
+    ///     uses ``OperationTimeouts``: a short limit for reads, a longer one
+    ///     for writes and a longest for medication synchronization. Its
+    ///     sessions also keep no cookies and stop at a Cloudflare Access
+    ///     sign-in redirect; a session passed here has to do both itself, or
+    ///     a revoked token keeps working on its cookie and a missing one reads
+    ///     as a malformed response.
     public init(
         server: VictualServer,
         apiKey: VictualAPIKey,
+        edgeCredential: VictualEdgeCredential? = nil,
         session: URLSession? = nil,
         middlewares: [any ClientMiddleware] = []
     ) {
@@ -96,6 +113,7 @@ public struct VictualClient: Sendable {
         self.init(
             server: server,
             apiKey: apiKey,
+            edgeCredential: edgeCredential,
             transport: transport,
             middlewares: middlewares
         )

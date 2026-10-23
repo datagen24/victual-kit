@@ -10,7 +10,9 @@ import VictualCore
 ///
 /// The API key is persisted through a ``VictualCredentialStore`` — the Keychain
 /// by default — so a returning user does not retype it. Call ``restore()`` at
-/// launch; a successful ``connect()`` saves; ``signOut()`` forgets.
+/// launch; a successful ``connect()`` saves; ``signOut()`` forgets. An
+/// instance behind Cloudflare Access also needs a service token, which is kept
+/// the same way.
 @MainActor
 @Observable
 public final class VictualSession {
@@ -54,6 +56,13 @@ public final class VictualSession {
     /// The API key as typed by the user.
     public var apiKeyText: String
 
+    /// The Cloudflare Access service token's Client ID, as typed or pasted.
+    /// Empty, with ``edgeClientSecretText``, for an instance not behind Access.
+    public var edgeClientIDText: String = ""
+
+    /// The Cloudflare Access service token's Client Secret, as typed or pasted.
+    public var edgeClientSecretText: String = ""
+
     public private(set) var state: State = .disconnected
 
     /// The authenticated client, available once ``state`` is `.connected`.
@@ -94,7 +103,7 @@ public final class VictualSession {
 
     private let credentialStore: any VictualCredentialStore
     private let defaults: UserDefaults
-    private let makeClient: @Sendable (VictualServer, VictualAPIKey) -> VictualClient
+    private let makeClient: @Sendable (VictualServer, Credentials) -> VictualClient
     private var attempt: Task<Void, Never>?
 
     /// Creates a session.
@@ -103,16 +112,16 @@ public final class VictualSession {
     ///   - credentialStore: Where the API key is kept between launches. The
     ///     default is the Keychain; pass `InMemoryCredentialStore()` in previews.
     ///   - defaults: Where the last-used instance address is remembered.
-    ///   - clientFactory: How to build a client once the address and key parse.
-    ///     The default uses `URLSession`; tests pass a factory backed by a stub
-    ///     transport.
+    ///   - clientFactory: How to build a client once the address and
+    ///     credentials parse. The default uses `URLSession`; tests pass a
+    ///     factory backed by a stub transport.
     public init(
         serverText: String = "",
         apiKeyText: String = "",
         credentialStore: any VictualCredentialStore = KeychainCredentialStore(),
         defaults: UserDefaults = .standard,
-        clientFactory: @escaping @Sendable (VictualServer, VictualAPIKey) -> VictualClient = {
-            VictualClient(server: $0, apiKey: $1)
+        clientFactory: @escaping @Sendable (VictualServer, Credentials) -> VictualClient = {
+            VictualClient(server: $0, apiKey: $1.apiKey, edgeCredential: $1.edgeCredential)
         }
     ) {
         self.serverText = serverText
@@ -122,10 +131,30 @@ public final class VictualSession {
         self.makeClient = clientFactory
     }
 
+    /// What a client is built from: the user's API key, and the device's
+    /// service token for an instance behind Cloudflare Access.
+    ///
+    /// Two credentials for two different gates, kept apart so either can be
+    /// replaced — the key by a sign-in, the token by device enrollment —
+    /// without touching the other.
+    public struct Credentials: Sendable, Hashable {
+        public var apiKey: VictualAPIKey
+        public var edgeCredential: VictualEdgeCredential?
+
+        public init(apiKey: VictualAPIKey, edgeCredential: VictualEdgeCredential? = nil) {
+            self.apiKey = apiKey
+            self.edgeCredential = edgeCredential
+        }
+    }
+
     /// Whether the entered values are complete enough to be worth a round trip.
+    ///
+    /// The service token is optional, but half of one is not: both of its
+    /// fields, or neither.
     public var canConnect: Bool {
         !serverText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && VictualAPIKey(apiKeyText).isWellFormed
+            && VictualEdgeCredential.isComplete(clientID: edgeClientIDText, clientSecret: edgeClientSecretText)
             && !state.isConnecting
     }
 
@@ -167,8 +196,10 @@ public final class VictualSession {
         guard let server = lastUsedServer else { return false }
 
         let saved: VictualAPIKey?
+        let savedEdge: VictualEdgeCredential?
         do {
             saved = try await credentialStore.apiKey(for: server)
+            savedEdge = try await credentialStore.edgeCredential(for: server)
         } catch {
             credentialStoreError = VictualCredentialStoreError(error)
             return false
@@ -177,6 +208,8 @@ public final class VictualSession {
 
         serverText = server.instanceURL.absoluteString
         apiKeyText = saved.rawValue
+        edgeClientIDText = savedEdge?.clientID ?? ""
+        edgeClientSecretText = savedEdge?.clientSecret ?? ""
         connect()
         await waitForConnectionAttempt()
         return state.isConnected
@@ -191,8 +224,9 @@ public final class VictualSession {
         state = .disconnected
     }
 
-    /// Disconnects and forgets the instance: its key is removed from the
-    /// credential store and it is no longer the remembered instance.
+    /// Disconnects and forgets the instance: its key and any service token are
+    /// removed from the credential store and it is no longer the remembered
+    /// instance.
     ///
     /// The address is kept in ``serverText`` so signing back in only needs a new
     /// key.
@@ -203,6 +237,7 @@ public final class VictualSession {
         if let server = try? VictualServer(userEnteredText: serverText) {
             do {
                 try await credentialStore.removeAPIKey(for: server)
+                try await credentialStore.removeEdgeCredential(for: server)
                 credentialStoreError = nil
             } catch {
                 credentialStoreError = VictualCredentialStoreError(error)
@@ -213,6 +248,8 @@ public final class VictualSession {
         signOutCount += 1
         setClient(nil)
         apiKeyText = ""
+        edgeClientIDText = ""
+        edgeClientSecretText = ""
         state = .disconnected
     }
 
@@ -230,14 +267,17 @@ public final class VictualSession {
             return
         }
 
-        let key = VictualAPIKey(apiKeyText)
-        let candidate = makeClient(server, key)
+        let credentials = Credentials(
+            apiKey: VictualAPIKey(apiKeyText),
+            edgeCredential: .entered(clientID: edgeClientIDText, clientSecret: edgeClientSecretText)
+        )
+        let candidate = makeClient(server, credentials)
         do {
             let information = try await candidate.verifyConnection()
             guard !Task.isCancelled else { return }
             setClient(candidate)
             state = .connected(information)
-            await remember(key, for: server)
+            await remember(credentials, for: server)
         } catch {
             guard !Task.isCancelled else { return }
             setClient(nil)
@@ -254,13 +294,22 @@ public final class VictualSession {
         connectionGeneration &+= 1
     }
 
-    /// Saves the key and marks the instance as the one to restore next launch.
+    /// Saves the key and token and marks the instance as the one to restore
+    /// next launch.
+    ///
+    /// A connection that worked without a token removes any saved one, so a
+    /// token the person cleared does not come back.
     ///
     /// A failure here is recorded on ``credentialStoreError`` but does not
     /// disturb ``state``: the session is connected either way.
-    private func remember(_ key: VictualAPIKey, for server: VictualServer) async {
+    private func remember(_ credentials: Credentials, for server: VictualServer) async {
         do {
-            try await credentialStore.save(key, for: server)
+            try await credentialStore.save(credentials.apiKey, for: server)
+            if let edge = credentials.edgeCredential {
+                try await credentialStore.save(edge, for: server)
+            } else {
+                try await credentialStore.removeEdgeCredential(for: server)
+            }
             credentialStoreError = nil
         } catch {
             credentialStoreError = VictualCredentialStoreError(error)

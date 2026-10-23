@@ -98,7 +98,10 @@ actor DoseSyncEngine {
                 queue.outbox[index].attempts += 1
                 queue.outbox[index].lastError = failure.localizedDescription
                 switch failure {
-                case .unauthorized, .forbidden:
+                // Refused before the dose was looked at -- by Victual for the
+                // key, or by Cloudflare for the device. Nothing is wrong with
+                // the dose, so it stays queued rather than being held.
+                case .unauthorized, .forbidden, .edgeAccessRequired, .edgeBlocked, .edgeChallenged:
                     try await storage.saveQueue(queue, for: accountKey)
                     throw failure
                 default:

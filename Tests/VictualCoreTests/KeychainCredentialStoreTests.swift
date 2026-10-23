@@ -29,6 +29,25 @@ enum KeychainAvailability {
     }()
 }
 
+extension KeychainAvailability {
+    /// Whether the data-protection Keychain is reachable: in an app or a
+    /// simulator test host, not a SwiftPM test binary on macOS. Only it records
+    /// an item's accessibility class; the file-based Keychain has none.
+    static let hasDataProtectionKeychain: Bool = {
+        let store = KeychainCredentialStore(
+            configuration: .init(service: "dev.victual.victual-kit.availability-probe.dp")
+        )
+        let server = VictualServer(instanceURL: URL(string: "https://probe.invalid")!)
+        do {
+            try store.saveSynchronously("probe", for: server)
+            defer { try? store.removeAllSynchronously() }
+            return try store.apiKeySynchronously(for: server) == "probe"
+        } catch {
+            return false
+        }
+    }()
+}
+
 @Suite(
     "KeychainCredentialStore",
     .enabled(if: KeychainAvailability.isAvailable, "no usable Keychain in this process")
@@ -131,6 +150,61 @@ struct KeychainCredentialStoreTests {
         #expect(rebuilt.baseURL.absoluteString == "https://example.com/victual/rest/api")
     }
 
+    @Test("Stores a service token beside the key, without touching it")
+    func roundTripsAnEdgeToken() async throws {
+        defer { tearDown() }
+        let token = VictualEdgeCredential(clientID: "abc.access", clientSecret: "cfast_x")
+
+        try await store.save("sk-victual-abc", for: server)
+        try await store.save(token, for: server)
+
+        #expect(try await store.edgeCredential(for: server) == token)
+        #expect(try await store.apiKey(for: server) == "sk-victual-abc")
+        // The token is not an instance of its own.
+        #expect(try await store.savedServers() == [server])
+
+        try await store.removeEdgeCredential(for: server)
+        #expect(try await store.edgeCredential(for: server) == nil)
+        #expect(try await store.apiKey(for: server) == "sk-victual-abc")
+    }
+
+    @Test("Has no token for an instance that never had one")
+    func noEdgeToken() async throws {
+        #expect(try await store.edgeCredential(for: server) == nil)
+        try await store.removeEdgeCredential(for: server)
+    }
+
+    @Test(
+        "Re-saving moves an item to the configured accessibility",
+        .enabled(if: KeychainAvailability.hasDataProtectionKeychain, "the file-based Keychain has no accessibility")
+    )
+    func resaveMigratesAccessibility() throws {
+        // What the apps rely on to move existing keys to this-device-only: the
+        // session saves on every successful connection.
+        let service = "dev.victual.victual-kit.tests.\(UUID().uuidString)"
+        let old = KeychainCredentialStore(
+            configuration: .init(service: service, accessibility: .afterFirstUnlock))
+        let new = KeychainCredentialStore(
+            configuration: .init(service: service, accessibility: .afterFirstUnlockThisDeviceOnly))
+        defer { try? new.removeAllSynchronously() }
+
+        try old.saveSynchronously("key", for: server)
+        try new.saveSynchronously("key", for: server)
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: CFTypeRef?
+        #expect(SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess)
+        let attributes = try #require(result as? [String: Any])
+        let accessible = attributes[kSecAttrAccessible as String] as? String
+        #expect(accessible == (kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String))
+    }
+
     @Test("removeAll clears every key this store wrote")
     func clearsEverything() async throws {
         defer { tearDown() }
@@ -138,9 +212,12 @@ struct KeychainCredentialStoreTests {
         try await store.save("a", for: server)
         try await store.save("b", for: VictualServer(instanceURL: URL(string: "https://b.test")!))
 
+        try await store.save(VictualEdgeCredential(clientID: "a.access", clientSecret: "s"), for: server)
+
         try await store.removeAll()
 
         #expect(try await store.savedServers().isEmpty)
+        #expect(try await store.edgeCredential(for: server) == nil)
     }
 }
 
@@ -161,6 +238,12 @@ struct InMemoryCredentialStoreTests {
         try await store.removeAPIKey(for: server)
         #expect(try await store.apiKey(for: server) == nil)
         #expect(try await store.savedServers().isEmpty)
+
+        let token = VictualEdgeCredential(clientID: "a.access", clientSecret: "s")
+        try await store.save(token, for: server)
+        #expect(try await store.edgeCredential(for: server) == token)
+        try await store.removeEdgeCredential(for: server)
+        #expect(try await store.edgeCredential(for: server) == nil)
     }
 
     @Test("Can be seeded for previews")

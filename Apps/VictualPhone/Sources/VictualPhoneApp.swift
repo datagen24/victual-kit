@@ -22,15 +22,19 @@ struct VictualPhoneApp: App {
     /// Not the package default, for the reason the macOS application gives: a
     /// test run must never share an item with a real household's key.
     ///
-    /// ## Why `afterFirstUnlock`
+    /// ## Why `afterFirstUnlockThisDeviceOnly`
     ///
     /// The Siri concept (docs/concepts/siri-and-app-intents.md §6.2) names two
     /// settings that silently break background work if left at their defaults.
     /// This is the first: an intent or a refresh firing after a reboot, before
-    /// the phone is unlocked, cannot read a `whenUnlocked` item. Changing
-    /// accessibility later is a migration, since the existing item keeps the
-    /// class it was written with, so it is set now while there is nothing to
-    /// migrate.
+    /// the phone is unlocked, cannot read a `whenUnlocked` item.
+    ///
+    /// `ThisDeviceOnly` because a Cloudflare Access service token is issued for
+    /// one phone, so that phone can be revoked on its own; restored onto a new
+    /// phone, it no longer could. The API key follows the same policy so the
+    /// two credentials behave alike. Items written earlier as plain
+    /// `afterFirstUnlock` move over on the next successful connection, which
+    /// saves them again.
     ///
     /// The second, a shared access group, is deliberately not set: it needs a
     /// team identifier, which this project does not commit, and there is no
@@ -41,7 +45,7 @@ struct VictualPhoneApp: App {
     private static let credentialStore = KeychainCredentialStore(
         configuration: .init(
             service: "dev.victual.VictualPhone.api-key",
-            accessibility: .afterFirstUnlock
+            accessibility: .afterFirstUnlockThisDeviceOnly
         )
     )
 }

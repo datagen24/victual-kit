@@ -52,6 +52,10 @@ struct VictualApp: App {
     /// application gets a real signing identity** — plan 01's open question 1 —
     /// because a Developer ID build does have a team, and the data-protection
     /// Keychain is the better store once it is usable.
+    ///
+    /// The file-based Keychain keeps no accessibility class, so the Cloudflare
+    /// Access service token stored beside the key is not marked this-device-only
+    /// here as it is on the phone. It does not sync through iCloud either way.
     private static let credentialStore = KeychainCredentialStore(
         configuration: .init(
             service: "dev.victual.Victual.api-key",
