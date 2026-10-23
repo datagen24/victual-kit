@@ -195,6 +195,7 @@ private struct SyncStatusSection: View {
         switch error {
         case .unauthorized: "Doses are NOT being sent: the server rejected your API key"
         case .forbidden: "Doses are NOT being sent: this key may not record consumption"
+        case .edgeAccessRequired: "Doses are NOT being sent: the server needs a new access token"
         default: "The last sync failed"
         }
     }
@@ -205,6 +206,8 @@ private struct SyncStatusSection: View {
             "The key was refused (401). It may have expired or been deleted. Doses you log in Health stay queued on this phone. Reconnect with a working key in Settings."
         case .forbidden:
             "The server refused (403). Ask whoever runs Victual to allow this key to record consumption. Doses stay queued on this phone."
+        case .edgeAccessRequired:
+            (error.errorDescription ?? "") + " Doses stay queued on this phone. Add the new token in Settings."
         default:
             (error.errorDescription ?? "Unknown error.") + " Unsent doses are queued and will be retried."
         }

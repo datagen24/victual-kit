@@ -192,6 +192,36 @@ Two settings need care:
   bundle. A bare command-line or unit-test binary on macOS is not signed with a
   Keychain access group and needs it set to `false`.
 
+### Instances behind Cloudflare Access
+
+An instance behind Cloudflare Access needs a service token on every request as
+well as the API key. The token is a device credential that Cloudflare checks, and
+the key is still what tells Victual who the user is. Pass it to the client:
+
+```swift
+let client = VictualClient(
+    server: server,
+    apiKey: key,
+    edgeCredential: VictualEdgeCredential(clientID: "….access", clientSecret: "cfast_…")
+)
+```
+
+`VictualConnectionView` has an optional "Cloudflare Access" section for it, and
+`VictualSession` saves and restores it beside the key. `KeychainCredentialStore`
+keeps it in a second item under `edgeTokenService`, which defaults to `service`
+with `.edge-token` appended. The item uses the same account and the same
+accessibility as the key. Tokens are issued per device, so use a `ThisDeviceOnly`
+accessibility for both.
+
+Every client recognises Cloudflare's own responses, whether or not it has a
+token, and reports them as `edgeAccessRequired`, `edgeBlocked`, `edgeChallenged`
+or `edgeUnreachable` instead of as Victual errors. Each carries Cloudflare's Ray ID
+where there is one. A `502` or `52x` on a write may come after Victual received
+it, so `VictualError.writeFailure` reports it as `outcomeUnknown`. The default
+transport keeps no cookies, so a revoked token stops working on the next request.
+It also does not follow the redirect to the Access sign-in page. A `URLSession`
+you pass in yourself has to do both.
+
 For previews and tests, `InMemoryCredentialStore` is a complete implementation
 that does not outlive the process:
 

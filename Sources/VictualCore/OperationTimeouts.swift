@@ -58,16 +58,39 @@ struct TimeoutRoutingTransport: ClientTransport {
     private let writeTransport: URLSessionTransport
     private let synchronizationTransport: URLSessionTransport
 
-    init(timeouts: OperationTimeouts = OperationTimeouts()) {
+    /// - Parameter protocolClasses: Prepended to each session's URL protocols.
+    ///   For tests, which answer from a `URLProtocol` stub so that redirects
+    ///   go through `URLSession` itself.
+    init(timeouts: OperationTimeouts = OperationTimeouts(), protocolClasses: [AnyClass] = []) {
         self.timeouts = timeouts
         func transport(_ seconds: TimeInterval) -> URLSessionTransport {
-            let configuration = URLSessionConfiguration.default
-            configuration.timeoutIntervalForRequest = seconds
-            return URLSessionTransport(configuration: .init(session: URLSession(configuration: configuration)))
+            URLSessionTransport(
+                configuration: .init(session: Self.session(timeout: seconds, protocolClasses: protocolClasses)))
         }
         self.readTransport = transport(timeouts.read)
         self.writeTransport = transport(timeouts.write)
         self.synchronizationTransport = transport(timeouts.synchronization)
+    }
+
+    /// A session for one limit.
+    ///
+    /// It keeps no cookies. Cloudflare Access answers a request carrying a
+    /// service token with a `CF_Authorization` cookie good for a day, and a
+    /// session that kept it would keep getting in on it after the token was
+    /// revoked. Without it, every request is checked against the token. Victual
+    /// itself needs no cookie for an API-key request.
+    ///
+    /// It also stops at a redirect to the Access sign-in page; see
+    /// ``AccessRedirectGuard``.
+    static func session(timeout: TimeInterval, protocolClasses: [AnyClass] = []) -> URLSession {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        if !protocolClasses.isEmpty {
+            configuration.protocolClasses = protocolClasses + (configuration.protocolClasses ?? [])
+        }
+        return URLSession(configuration: configuration, delegate: AccessRedirectGuard(), delegateQueue: nil)
     }
 
     func send(
@@ -81,5 +104,30 @@ struct TimeoutRoutingTransport: ClientTransport {
             limit == timeouts.read
             ? readTransport : (limit == timeouts.write ? writeTransport : synchronizationTransport)
         return try await chosen.send(request, body: body, baseURL: baseURL, operationID: operationID)
+    }
+}
+
+/// Refuses to follow a redirect to a Cloudflare Access sign-in page.
+///
+/// Access answers a request without a valid service token with a `302` to its
+/// login page. Followed, that becomes a `200` HTML page the generated client
+/// cannot decode, and the reason is lost. Stopped here, the `302` itself comes
+/// back, and ``EdgeResponseMiddleware`` reports it as
+/// ``VictualError/edgeAccessRequired``. Every other redirect is followed as
+/// before.
+///
+/// A session delegate rather than a task one: in streaming mode
+/// `URLSessionTransport` gives each task its own delegate, which does not
+/// handle redirects, so `URLSession` falls back to this one. A test covers it.
+final class AccessRedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        let target = request.url?.absoluteString ?? ""
+        completionHandler(EdgeResponseMiddleware.isAccessLogin(target) ? nil : request)
     }
 }

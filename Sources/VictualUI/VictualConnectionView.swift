@@ -12,6 +12,10 @@ public struct VictualConnectionView: View {
     /// Runs once the session reaches `.connected`.
     private let onConnected: (() -> Void)?
 
+    /// Whether the Cloudflare Access fields are showing. Most instances never
+    /// need them, so they start folded away unless a token is already entered.
+    @State private var showsEdgeFields = false
+
     public init(session: VictualSession, onConnected: (() -> Void)? = nil) {
         self._session = Bindable(session)
         self.onConnected = onConnected
@@ -27,6 +31,8 @@ public struct VictualConnectionView: View {
             } footer: {
                 Text("Create an API key in your Victual instance under Settings › Manage API keys.")
             }
+
+            edgeSection
 
             Section {
                 Button(action: session.connect) {
@@ -50,6 +56,61 @@ public struct VictualConnectionView: View {
         }
         .onChange(of: session.state.isConnected) { _, isConnected in
             if isConnected { onConnected?() }
+        }
+        .onAppear {
+            if !session.edgeClientIDText.isEmpty { showsEdgeFields = true }
+        }
+        .onChange(of: session.edgeClientIDText.isEmpty) { _, isEmpty in
+            // A restore fills the fields after the form is already showing.
+            if !isEmpty { showsEdgeFields = true }
+        }
+        .onChange(of: session.state.error == .edgeAccessRequired) { _, needsToken in
+            if needsToken { showsEdgeFields = true }
+        }
+    }
+
+    /// The service token for an instance behind Cloudflare Access.
+    private var edgeSection: some View {
+        Section {
+            DisclosureGroup("Cloudflare Access", isExpanded: $showsEdgeFields) {
+                edgeClientIDField
+                edgeClientSecretField
+            }
+        } footer: {
+            if showsEdgeFields {
+                Text("Only for a server behind Cloudflare Access. Its administrator issues a service token for this device.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var edgeClientIDField: some View {
+        let field = TextField("Client ID", text: $session.edgeClientIDText)
+            .disabled(session.state.isConnecting)
+        #if os(iOS) || os(visionOS)
+            field
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        #else
+            field.autocorrectionDisabled()
+        #endif
+    }
+
+    /// Masked, with the same way to empty it as the API key field.
+    private var edgeClientSecretField: some View {
+        HStack {
+            SecureField("Client Secret", text: $session.edgeClientSecretText)
+                .autocorrectionDisabled()
+                .disabled(session.state.isConnecting)
+            if !session.edgeClientSecretText.isEmpty && !session.state.isConnecting {
+                Button {
+                    session.edgeClientSecretText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Clear Client Secret")
+            }
         }
     }
 
@@ -141,7 +202,7 @@ public struct VictualConnectionView: View {
             } header: {
                 Text("Connected")
             } footer: {
-                Text("Disconnecting keeps the API key in the Keychain. Forgetting removes it.")
+                Text("Disconnecting keeps the API key in the Keychain. Forgetting removes it, and any Cloudflare Access token.")
             }
         case .failed(let error):
             Section {

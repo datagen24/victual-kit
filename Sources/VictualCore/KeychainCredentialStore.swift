@@ -1,9 +1,10 @@
 import Foundation
 import Security
 
-/// Stores Victual API keys in the Keychain.
+/// Stores Victual API keys, and Cloudflare Access service tokens, in the
+/// Keychain.
 ///
-/// Each instance gets one generic-password item:
+/// Each instance gets one generic-password item for its API key:
 ///
 /// - `kSecAttrService` — ``Configuration/service``, shared by every item this
 ///   store writes, so they can be enumerated and cleared together.
@@ -12,6 +13,12 @@ import Security
 /// - `kSecAttrGeneric` — the API path prefix, so a ``VictualServer`` can be
 ///   rebuilt exactly rather than guessed at.
 /// - the value — the API key, UTF-8 encoded.
+///
+/// An instance behind Cloudflare Access gets a second item for its service
+/// token, under ``Configuration/edgeTokenService`` with the same account. The
+/// value is the token's Client ID and Secret as JSON, so the pair is written
+/// and replaced together. A separate service keeps API-key items exactly as
+/// they were, with nothing to migrate.
 ///
 /// The Keychain calls are synchronous. A single-item lookup is fast enough that
 /// the main actor will not notice, which is why ``VictualCredentialStore``'s
@@ -23,6 +30,15 @@ public struct KeychainCredentialStore: VictualCredentialStore {
         ///
         /// Change it to keep two apps' keys apart in the same access group.
         public var service: String
+
+        /// The `kSecAttrService` of the items holding Cloudflare Access service
+        /// tokens. Same account, same access group and same accessibility as
+        /// the API key it sits beside.
+        ///
+        /// Defaults to ``service`` with `.edge-token` appended, so two stores
+        /// with different services never share tokens — or clear each other's
+        /// in ``KeychainCredentialStore/removeAll()``.
+        public var edgeTokenService: String
 
         /// A Keychain access group, so an app extension or widget can read the
         /// same keys. `nil` uses the app's default group.
@@ -53,12 +69,14 @@ public struct KeychainCredentialStore: VictualCredentialStore {
 
         public init(
             service: String = "dev.victual.victual-kit.api-key",
+            edgeTokenService: String? = nil,
             accessGroup: String? = nil,
             accessibility: Accessibility = .afterFirstUnlock,
             synchronizesWithiCloud: Bool = false,
             usesDataProtectionKeychain: Bool = true
         ) {
             self.service = service
+            self.edgeTokenService = edgeTokenService ?? service + ".edge-token"
             self.accessGroup = accessGroup
             self.accessibility = accessibility
             self.synchronizesWithiCloud = synchronizesWithiCloud
@@ -130,7 +148,19 @@ public struct KeychainCredentialStore: VictualCredentialStore {
         try await offCallerActor { try self.savedServersSynchronously() }
     }
 
-    /// Removes every key this store wrote.
+    public func edgeCredential(for server: VictualServer) async throws -> VictualEdgeCredential? {
+        try await offCallerActor { try self.edgeCredentialSynchronously(for: server) }
+    }
+
+    public func save(_ edgeCredential: VictualEdgeCredential, for server: VictualServer) async throws {
+        try await offCallerActor { try self.saveSynchronously(edgeCredential, for: server) }
+    }
+
+    public func removeEdgeCredential(for server: VictualServer) async throws {
+        try await offCallerActor { try self.removeEdgeCredentialSynchronously(for: server) }
+    }
+
+    /// Removes every key and token this store wrote.
     public func removeAll() async throws {
         try await offCallerActor { try self.removeAllSynchronously() }
     }
@@ -148,7 +178,43 @@ public struct KeychainCredentialStore: VictualCredentialStore {
     // MARK: - Synchronous implementation
 
     public func apiKeySynchronously(for server: VictualServer) throws -> VictualAPIKey? {
-        var query = baseQuery()
+        guard let data = try readValue(service: configuration.service, for: server) else { return nil }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw VictualCredentialStoreError.malformedStoredValue
+        }
+        return VictualAPIKey(text)
+    }
+
+    public func saveSynchronously(_ apiKey: VictualAPIKey, for server: VictualServer) throws {
+        try writeValue(Data(apiKey.rawValue.utf8), service: configuration.service, for: server)
+    }
+
+    public func removeAPIKeySynchronously(for server: VictualServer) throws {
+        try deleteValue(service: configuration.service, for: server)
+    }
+
+    public func edgeCredentialSynchronously(for server: VictualServer) throws -> VictualEdgeCredential? {
+        guard let data = try readValue(service: configuration.edgeTokenService, for: server) else { return nil }
+        do {
+            return try JSONDecoder().decode(VictualEdgeCredential.self, from: data)
+        } catch {
+            throw VictualCredentialStoreError.malformedStoredValue
+        }
+    }
+
+    public func saveSynchronously(_ edgeCredential: VictualEdgeCredential, for server: VictualServer) throws {
+        let value = try JSONEncoder().encode(edgeCredential)
+        try writeValue(value, service: configuration.edgeTokenService, for: server)
+    }
+
+    public func removeEdgeCredentialSynchronously(for server: VictualServer) throws {
+        try deleteValue(service: configuration.edgeTokenService, for: server)
+    }
+
+    // MARK: - Items
+
+    private func readValue(service: String, for server: VictualServer) throws -> Data? {
+        var query = baseQuery(service: service)
         query[kSecAttrAccount as String] = account(for: server)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -158,10 +224,10 @@ public struct KeychainCredentialStore: VictualCredentialStore {
 
         switch status {
         case errSecSuccess:
-            guard let data = result as? Data, let text = String(data: data, encoding: .utf8) else {
+            guard let data = result as? Data else {
                 throw VictualCredentialStoreError.malformedStoredValue
             }
-            return VictualAPIKey(text)
+            return data
         case errSecItemNotFound:
             return nil
         default:
@@ -169,10 +235,8 @@ public struct KeychainCredentialStore: VictualCredentialStore {
         }
     }
 
-    public func saveSynchronously(_ apiKey: VictualAPIKey, for server: VictualServer) throws {
-        let value = Data(apiKey.rawValue.utf8)
-
-        var query = baseQuery()
+    private func writeValue(_ value: Data, service: String, for server: VictualServer) throws {
+        var query = baseQuery(service: service)
         query[kSecAttrAccount as String] = account(for: server)
 
         var attributes = query
@@ -186,7 +250,9 @@ public struct KeychainCredentialStore: VictualCredentialStore {
             return
         case errSecDuplicateItem:
             // An item for this instance already exists; replace its contents
-            // rather than leaving the stale key in place.
+            // rather than leaving the stale key in place. The accessibility is
+            // rewritten too, which is how an item saved under an older policy
+            // moves to the current one on the next successful connection.
             let update: [String: Any] = [
                 kSecValueData as String: value,
                 kSecAttrGeneric as String: Data(server.apiPathPrefix.utf8),
@@ -201,8 +267,8 @@ public struct KeychainCredentialStore: VictualCredentialStore {
         }
     }
 
-    public func removeAPIKeySynchronously(for server: VictualServer) throws {
-        var query = baseQuery()
+    private func deleteValue(service: String, for server: VictualServer) throws {
+        var query = baseQuery(service: service)
         query[kSecAttrAccount as String] = account(for: server)
 
         let status = SecItemDelete(query as CFDictionary)
@@ -211,34 +277,36 @@ public struct KeychainCredentialStore: VictualCredentialStore {
         }
     }
 
+    // MARK: - Enumeration and clearing
+
     public func savedServersSynchronously() throws -> [VictualServer] {
         try storedAttributes()
             .compactMap(server(fromAttributes:))
             .sorted { $0.baseURL.absoluteString < $1.baseURL.absoluteString }
     }
 
-    /// Forgets every key this store has written.
+    /// Forgets every key and token this store has written.
     ///
-    /// Scoped to ``Configuration/service`` and the access group, so it cannot
-    /// reach another app's items.
+    /// Scoped to ``Configuration/service``, ``Configuration/edgeTokenService``
+    /// and the access group, so it cannot reach another app's items.
     public func removeAllSynchronously() throws {
         // Deleting account by account rather than with one broad query: against
         // the file-based Keychain on macOS, a `SecItemDelete` that matches
         // several items removes only one of them and still reports success.
-        for account in try savedAccounts() {
-            var query = baseQuery()
-            query[kSecAttrAccount as String] = account
-            let status = SecItemDelete(query as CFDictionary)
-            guard status == errSecSuccess || status == errSecItemNotFound else {
-                throw VictualCredentialStoreError.keychain(status: status, operation: "delete all")
+        for service in [configuration.service, configuration.edgeTokenService] {
+            for account in try savedAccounts(service: service) {
+                var query = baseQuery(service: service)
+                query[kSecAttrAccount as String] = account
+                let status = SecItemDelete(query as CFDictionary)
+                guard status == errSecSuccess || status == errSecItemNotFound else {
+                    throw VictualCredentialStoreError.keychain(status: status, operation: "delete all")
+                }
             }
         }
     }
 
-    // MARK: - Enumeration
-
-    private func storedAttributes() throws -> [[String: Any]] {
-        var query = baseQuery()
+    private func storedAttributes(service: String? = nil) throws -> [[String: Any]] {
+        var query = baseQuery(service: service ?? configuration.service)
         query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
 
@@ -258,16 +326,16 @@ public struct KeychainCredentialStore: VictualCredentialStore {
         }
     }
 
-    private func savedAccounts() throws -> [String] {
-        try storedAttributes().compactMap { $0[kSecAttrAccount as String] as? String }
+    private func savedAccounts(service: String) throws -> [String] {
+        try storedAttributes(service: service).compactMap { $0[kSecAttrAccount as String] as? String }
     }
 
     // MARK: - Query construction
 
-    private func baseQuery() -> [String: Any] {
+    private func baseQuery(service: String) -> [String: Any] {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: configuration.service,
+            kSecAttrService as String: service,
         ]
         if let accessGroup = configuration.accessGroup {
             query[kSecAttrAccessGroup as String] = accessGroup

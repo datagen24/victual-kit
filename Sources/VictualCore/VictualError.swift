@@ -36,7 +36,8 @@ public enum VictualError: Error, Sendable {
     case transportFailed(underlying: any Error)
 
     /// A write was sent and the server did not answer in time, or the connection
-    /// dropped while waiting.
+    /// dropped while waiting, or Cloudflare reached the instance and then had
+    /// no answer from it.
     ///
     /// The booking may have been recorded. Treat it as neither done nor failed.
     ///
@@ -63,6 +64,31 @@ public enum VictualError: Error, Sendable {
     /// the same contents — never a new key, which would book a second time.
     case idempotencyInProgress(message: String?)
 
+    /// Cloudflare Access refused the request before it reached Victual: no
+    /// service token is saved for this instance, or the saved one is wrong,
+    /// expired or revoked. Nothing was sent to Victual.
+    ///
+    /// Only the server's operator can issue a new token.
+    case edgeAccessRequired
+
+    /// Cloudflare's firewall refused the request — on the instance this was
+    /// written for, because of the country it came from. Nothing was sent to
+    /// Victual.
+    case edgeBlocked(rayID: String?)
+
+    /// Cloudflare answered with a bot challenge, which an app cannot solve.
+    /// Nothing was sent to Victual.
+    case edgeChallenged(rayID: String?)
+
+    /// Cloudflare could not get an answer from the instance.
+    ///
+    /// `requestSent` is `false` when Cloudflare had no connection to it at all
+    /// (a tunnel that is down), so nothing was sent. It is `nil` when the
+    /// instance was reached, or may have been, before it failed or went quiet:
+    /// a write may then have been recorded, and ``writeFailure(_:)`` reports
+    /// it as ``outcomeUnknown(underlying:)``.
+    case edgeUnreachable(rayID: String?, requestSent: Bool?)
+
     /// Maps a failure of a *write* onto this type.
     ///
     /// A timeout or a dropped connection after sending leaves the outcome
@@ -71,6 +97,12 @@ public enum VictualError: Error, Sendable {
     /// ordinary transport failures that are safe to retry.
     public static func writeFailure(_ error: any Error) -> VictualError {
         let mapped = mapping(error)
+        // Cloudflare reached the instance, or may have, and then had no
+        // answer: the same uncertainty as a timeout. Every other edge failure
+        // was refused before Victual saw it.
+        if case .edgeUnreachable(_, requestSent: nil) = mapped {
+            return .outcomeUnknown(underlying: mapped)
+        }
         guard case .transportFailed(let underlying) = mapped,
             let urlError = underlying as? URLError,
             urlError.code == .timedOut || urlError.code == .networkConnectionLost
@@ -139,11 +171,27 @@ public enum VictualError: Error, Sendable {
     /// depends on the key and the server, which the error cannot see.
     public var isRetryable: Bool {
         switch self {
-        case .transportFailed, .serverError, .idempotencyInProgress:
+        case .transportFailed, .serverError, .idempotencyInProgress, .edgeUnreachable:
             return true
         case .invalidServerURL, .outcomeUnknown, .unauthorized, .forbidden, .notFound, .badRequest,
-            .unexpectedStatus, .decodingFailed, .idempotencyConflict:
+            .unexpectedStatus, .decodingFailed, .idempotencyConflict, .edgeAccessRequired,
+            .edgeBlocked, .edgeChallenged:
             return false
+        }
+    }
+
+    /// The Cloudflare Ray ID of the response, when Cloudflare answered.
+    ///
+    /// Worth showing in error details: with it, the operator can find the exact
+    /// request in Cloudflare's security events.
+    public var rayID: String? {
+        switch self {
+        case .edgeBlocked(let ray), .edgeChallenged(let ray), .edgeUnreachable(let ray, _):
+            return ray
+        case .outcomeUnknown(let underlying):
+            return (underlying as? VictualError)?.rayID
+        default:
+            return nil
         }
     }
 }
@@ -171,11 +219,28 @@ extension VictualError: LocalizedError {
             return "Could not reach the server: \(underlying.localizedDescription)"
         case .outcomeUnknown:
             return "The server did not answer in time, so it is not known whether that was recorded. Stock has been refreshed. Check it before trying again."
+                + rayIDSuffix
         case .idempotencyConflict(let message):
             return message ?? "The server already recorded a different booking under this request's key, so nothing was booked."
         case .idempotencyInProgress(let message):
             return message ?? "The server is still recording this booking. Try again in a moment."
+        case .edgeAccessRequired:
+            return "This server needs a Cloudflare Access token, or the one saved has expired or been revoked. Ask the server's administrator for a new one."
+        case .edgeBlocked:
+            // Worded for any instance: which locations are allowed is the
+            // operator's rule, not something this package knows.
+            return "The server's firewall refused this connection, most likely because of the country it comes from. If you're traveling, it may work again when you're back."
+                + rayIDSuffix
+        case .edgeChallenged:
+            return "The server's bot protection asked for a check this app can't complete. Tell the server's administrator."
+                + rayIDSuffix
+        case .edgeUnreachable:
+            return "Can't reach the server right now. It may be offline." + rayIDSuffix
         }
+    }
+
+    private var rayIDSuffix: String {
+        rayID.map { " (Cloudflare Ray ID \($0))" } ?? ""
     }
 }
 
@@ -202,6 +267,13 @@ extension VictualError: Equatable {
             return aCode == bCode && aMessage == bMessage
         case (.unexpectedStatus(let a), .unexpectedStatus(let b)):
             return a == b
+        case (.edgeAccessRequired, .edgeAccessRequired):
+            return true
+        case (.edgeBlocked(let a), .edgeBlocked(let b)),
+            (.edgeChallenged(let a), .edgeChallenged(let b)):
+            return a == b
+        case (.edgeUnreachable(let aRay, let aSent), .edgeUnreachable(let bRay, let bSent)):
+            return aRay == bRay && aSent == bSent
         case (.decodingFailed(let a), .decodingFailed(let b)),
             (.transportFailed(let a), .transportFailed(let b)),
             (.outcomeUnknown(let a), .outcomeUnknown(let b)):

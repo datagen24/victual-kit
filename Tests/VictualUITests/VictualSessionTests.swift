@@ -26,8 +26,10 @@ struct VictualSessionTests {
             apiKeyText: apiKeyText,
             credentialStore: credentialStore,
             defaults: defaults ?? isolatedDefaults()
-        ) { server, key in
-            VictualClient(server: server, apiKey: key, transport: transport)
+        ) { server, credentials in
+            VictualClient(
+                server: server, apiKey: credentials.apiKey, edgeCredential: credentials.edgeCredential,
+                transport: transport)
         }
     }
 
@@ -186,8 +188,10 @@ struct VictualSessionCredentialTests {
             apiKeyText: apiKeyText,
             credentialStore: store,
             defaults: defaults
-        ) { server, key in
-            VictualClient(server: server, apiKey: key, transport: transport)
+        ) { server, credentials in
+            VictualClient(
+                server: server, apiKey: credentials.apiKey, edgeCredential: credentials.edgeCredential,
+                transport: transport)
         }
     }
 
@@ -207,6 +211,72 @@ struct VictualSessionCredentialTests {
         #expect(try await store.apiKey(for: server) == "test-key")
         #expect(session.lastUsedServer == server)
         #expect(session.credentialStoreError == nil)
+    }
+
+    @Test("A service token is sent, saved and restored beside the key")
+    func edgeTokenRoundTrip() async throws {
+        let store = InMemoryCredentialStore()
+        let defaults = defaults()
+        let transport = StubTransport(status: 200, json: systemInfoJSON)
+        let first = session(transport: transport, store: store, defaults: defaults)
+        first.edgeClientIDText = "abc.access"
+        first.edgeClientSecretText = " cfast_x\n"
+
+        first.connect()
+        await first.waitForConnectionAttempt()
+
+        let sent = try #require(transport.recorder.requests.first).request.headerFields
+        #expect(sent[VictualEdgeCredential.clientSecretHeaderName] == "cfast_x")
+        #expect(
+            try await store.edgeCredential(for: server)
+                == VictualEdgeCredential(clientID: "abc.access", clientSecret: "cfast_x"))
+
+        let second = session(
+            serverText: "", apiKeyText: "", transport: StubTransport(status: 200, json: systemInfoJSON),
+            store: store, defaults: defaults)
+        #expect(await second.restore())
+        #expect(second.edgeClientIDText == "abc.access")
+        #expect(second.edgeClientSecretText == "cfast_x")
+    }
+
+    @Test("Half a service token cannot connect")
+    func halfATokenIsNotEnough() {
+        let session = session(
+            transport: StubTransport(status: 200, json: systemInfoJSON), store: InMemoryCredentialStore(),
+            defaults: defaults())
+        session.edgeClientIDText = "abc.access"
+        #expect(!session.canConnect)
+        session.edgeClientSecretText = "cfast_x"
+        #expect(session.canConnect)
+    }
+
+    @Test("Connecting with the token cleared forgets the saved one")
+    func clearedTokenIsForgotten() async throws {
+        let store = InMemoryCredentialStore()
+        try await store.save(VictualEdgeCredential(clientID: "old.access", clientSecret: "s"), for: server)
+        let session = session(
+            transport: StubTransport(status: 200, json: systemInfoJSON), store: store, defaults: defaults())
+
+        session.connect()
+        await session.waitForConnectionAttempt()
+
+        #expect(try await store.edgeCredential(for: server) == nil)
+    }
+
+    @Test("Signing out forgets the service token too")
+    func signOutForgetsToken() async throws {
+        let store = InMemoryCredentialStore()
+        let session = session(
+            transport: StubTransport(status: 200, json: systemInfoJSON), store: store, defaults: defaults())
+        session.edgeClientIDText = "abc.access"
+        session.edgeClientSecretText = "cfast_x"
+        session.connect()
+        await session.waitForConnectionAttempt()
+
+        await session.signOut()
+
+        #expect(try await store.edgeCredential(for: server) == nil)
+        #expect(session.edgeClientIDText.isEmpty && session.edgeClientSecretText.isEmpty)
     }
 
     @Test("A failed connection saves nothing")
@@ -357,4 +427,7 @@ private struct FailingCredentialStore: VictualCredentialStore {
     func save(_ apiKey: VictualAPIKey, for server: VictualServer) async throws { throw Failure() }
     func removeAPIKey(for server: VictualServer) async throws { throw Failure() }
     func savedServers() async throws -> [VictualServer] { throw Failure() }
+    func edgeCredential(for server: VictualServer) async throws -> VictualEdgeCredential? { throw Failure() }
+    func save(_ edgeCredential: VictualEdgeCredential, for server: VictualServer) async throws { throw Failure() }
+    func removeEdgeCredential(for server: VictualServer) async throws { throw Failure() }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Persistence for the API keys of the Victual instances someone has signed
-/// into.
+/// into, and for the Cloudflare Access service tokens of those behind Access.
 ///
 /// A store is keyed by ``VictualServer``, so an app can hold keys for several
 /// instances at once — a home server and a work one, say — and switch between
@@ -21,6 +21,20 @@ public protocol VictualCredentialStore: Sendable {
 
     /// Every instance the store holds a key for.
     func savedServers() async throws -> [VictualServer]
+
+    /// The stored Cloudflare Access service token for `server`, or `nil` if
+    /// there is none — the usual case, for an instance not behind Access.
+    func edgeCredential(for server: VictualServer) async throws -> VictualEdgeCredential?
+
+    /// Stores `edgeCredential` for `server`, replacing any token already held.
+    ///
+    /// A service token is issued for one device, so a store should keep it
+    /// there: synced to another device, it could no longer be revoked on its
+    /// own.
+    func save(_ edgeCredential: VictualEdgeCredential, for server: VictualServer) async throws
+
+    /// Forgets the service token for `server`. Succeeds when there was none.
+    func removeEdgeCredential(for server: VictualServer) async throws
 }
 
 /// Why a credential store could not do what was asked.
@@ -53,11 +67,11 @@ extension VictualCredentialStoreError: LocalizedError {
             let detail =
                 SecCopyErrorMessageString(status, nil).map { $0 as String }
                 ?? "OSStatus \(status)"
-            return "Could not \(operation) the saved API key: \(detail)"
+            return "Could not \(operation) the saved credentials: \(detail)"
         case .malformedStoredValue:
-            return "The saved API key could not be read and should be entered again."
+            return "The saved credentials could not be read and should be entered again."
         case .underlying(let description):
-            return "Could not reach the saved API key: \(description)"
+            return "Could not reach the saved credentials: \(description)"
         }
     }
 }
@@ -70,6 +84,7 @@ extension VictualCredentialStoreError: LocalizedError {
 public final class InMemoryCredentialStore: VictualCredentialStore, @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [VictualServer: VictualAPIKey]
+    private var edgeStorage: [VictualServer: VictualEdgeCredential] = [:]
 
     public init(_ initial: [VictualServer: VictualAPIKey] = [:]) {
         self.storage = initial
@@ -90,5 +105,17 @@ public final class InMemoryCredentialStore: VictualCredentialStore, @unchecked S
     public func savedServers() async throws -> [VictualServer] {
         lock.withLock { Array(storage.keys) }
             .sorted { $0.baseURL.absoluteString < $1.baseURL.absoluteString }
+    }
+
+    public func edgeCredential(for server: VictualServer) async throws -> VictualEdgeCredential? {
+        lock.withLock { edgeStorage[server] }
+    }
+
+    public func save(_ edgeCredential: VictualEdgeCredential, for server: VictualServer) async throws {
+        lock.withLock { edgeStorage[server] = edgeCredential }
+    }
+
+    public func removeEdgeCredential(for server: VictualServer) async throws {
+        lock.withLock { edgeStorage[server] = nil }
     }
 }
