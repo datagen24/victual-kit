@@ -70,9 +70,21 @@ public struct VictualConnectionView: View {
     }
 
     /// The service token for an instance behind Cloudflare Access.
+    ///
+    /// Folded with a plain button rather than a `DisclosureGroup`, which
+    /// watchOS does not have.
     private var edgeSection: some View {
         Section {
-            DisclosureGroup("Cloudflare Access", isExpanded: $showsEdgeFields) {
+            Button {
+                showsEdgeFields.toggle()
+            } label: {
+                LabeledContent("Cloudflare Access") {
+                    Image(systemName: showsEdgeFields ? "chevron.down" : "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityValue(showsEdgeFields ? "Shown" : "Hidden")
+            if showsEdgeFields {
                 edgeClientIDField
                 edgeClientSecretField
             }
